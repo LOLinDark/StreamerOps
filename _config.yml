@@ -1,0 +1,37 @@
+title: "OmniCore"
+description: "Citizen Operations & Intelligence Network — Star Citizen companion hub"
+baseurl: "/StarCitizen-OmniCore"
+url: "https://lolindark.github.io"
+
+markdown: kramdown
+kramdown:
+  input: GFM
+
+navigation:
+  - title: Home
+    url: /
+  - title: User Guide
+    url: /user-guide
+  - title: Developer Guide
+    url: /developer-guide/
+  - title: About
+    url: /about
+  - title: Support
+    url: /support
+
+exclude:
+  - node_modules
+  - src
+  - server
+  - scripts
+  - public
+  - package.json
+  - package-lock.json
+  - vite.config.js
+  - eslint.config.js
+  - .env
+  - .env.example
+  - tmp-starmap.json
+  - DOCUMENTATION-STRUCTURE.md
+  - app/
+  - .github/

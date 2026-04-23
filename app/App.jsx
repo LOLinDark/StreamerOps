@@ -1,0 +1,158 @@
+import { lazy, Suspense, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import AdminLayout from './components/LayoutNew';
+import StreamerLayout from './components/StreamerLayout';
+import MainLayout from './components/MainLayout';
+import DevPanel from './components/DevPanel';
+import InDevelopmentBanner from './components/InDevelopmentBanner';
+import RSILoginPage from './pages/RSILoginPage';
+import DashboardPage from './pages/DashboardPage';
+import MainDashboardPage from './pages/MainDashboardPage';
+import AerobookPage from './pages/AerobookPage';
+import OnboardingChecklistPage from './pages/OnboardingChecklistPage';
+import NewPlayerGuidePage from './pages/NewPlayerGuidePage';
+import LoadoutBuilderPage from './pages/LoadoutBuilderPage';
+import EconomyTrackerPage from './pages/EconomyTrackerPage';
+import StatusViewPage from './pages/StatusViewPage';
+import HOTASConfigMainPage from './pages/HOTASConfigMainPage';
+import HOTASConfigModesLabPage from './pages/HOTASConfigModesLabPage';
+import DeveloperHotasProfileMatrixLabPage from './pages/DeveloperHotasProfileMatrixLabPage';
+import NetworkStatusBadge from './components/NetworkStatusBadge';
+import ShipDatabasePage from './pages/ShipDatabasePage';
+import { trackAppView, installGlobalErrorHandlers, startPerformanceMonitoring, useAppStore } from './platform-core';
+import { Loader, Center } from '@mantine/core';
+
+const AmazonQPage = lazy(() => import('./pages/AmazonQPage'));
+const GeminiPage = lazy(() => import('./pages/GeminiPage'));
+const AIRulesPage = lazy(() => import('./pages/AIRulesPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'));
+const RateLimitPage = lazy(() => import('./pages/RateLimitPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ThemePage = lazy(() => import('./pages/ThemePage'));
+const DeveloperPage = lazy(() => import('./pages/DeveloperPage'));
+const ChangesPage = lazy(() => import('./pages/ChangesPage'));
+const ErrorLogPage = lazy(() => import('./pages/ErrorLogPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const ScreenshotsPage = lazy(() => import('./pages/ScreenshotsPage'));
+const APITestPage = lazy(() => import('./pages/APITestPage'));
+const DeveloperContextIndexPage = lazy(() => import('./pages/DeveloperContextIndexPage'));
+const DeveloperNavChartsLabPage = lazy(() => import('./pages/DeveloperNavChartsLabPage'));
+const DeveloperVideoCatalogPage = lazy(() => import('./pages/DeveloperVideoCatalogPage'));
+const StreamerPage = lazy(() => import('./pages/StreamerPage'));
+
+// Theme Lab Pages
+const WelcomeOnline = lazy(() => import('./pages/theme/WelcomeOnline'));
+const StarCitizenDetail = lazy(() => import('./pages/theme/StarCitizenDetail'));
+const Squadron42Detail = lazy(() => import('./pages/theme/Squadron42Detail'));
+const PlaceholderSamplesPage = lazy(() => import('./pages/theme/PlaceholderSamplesPage'));
+const HOTASConfigPage = lazy(() => import('./pages/theme/HOTASConfigPage'));
+const HOTASConfigPageDark = lazy(() => import('./pages/theme/HOTASConfigPageDark'));
+const HOTASConfigPageToggle = lazy(() => import('./pages/theme/HOTASConfigPageToggle'));
+const HOTASTestPage = lazy(() => import('./pages/settings/HOTASTestPage'));
+
+function LazyFallback() {
+  return <Center h={200}><Loader color="cyan" type="dots" /></Center>;
+}
+
+function Lazy({ Component }) {
+  return <Suspense fallback={<LazyFallback />}><Component /></Suspense>;
+}
+
+function RuntimeObservers() {
+  const location = useLocation();
+
+  useEffect(() => {
+    installGlobalErrorHandlers();
+    startPerformanceMonitoring();
+  }, []);
+
+  useEffect(() => {
+    const path = `${location.pathname}${location.search || ''}`;
+    trackAppView(path);
+  }, [location.hash, location.pathname, location.search]);
+
+  return null;
+}
+
+function App() {
+  const welcomeCompleted = useAppStore((s) => s.welcomeCompleted);
+  const completeWelcome = useAppStore((s) => s.completeWelcome);
+
+  console.log('[OmniCore] App.jsx rendering, welcomeCompleted:', welcomeCompleted);
+
+  return (
+    <>
+      <NetworkStatusBadge />
+      <DevPanel />
+      <InDevelopmentBanner />
+      <RuntimeObservers />
+      <Routes>
+        {/* Theme Lab Routes - Public, no auth required */}
+        <Route path="/theme" element={<Lazy Component={WelcomeOnline} />} />
+        <Route path="/theme/star-citizen" element={<Lazy Component={StarCitizenDetail} />} />
+        <Route path="/theme/squadron-42" element={<Lazy Component={Squadron42Detail} />} />
+        <Route path="/theme/placeholder-samples" element={<Lazy Component={PlaceholderSamplesPage} />} />
+        <Route path="/theme/hotas-config" element={<Lazy Component={HOTASConfigPage} />} />
+        <Route path="/theme/hotas-config-dark" element={<Lazy Component={HOTASConfigPageDark} />} />
+        <Route path="/theme/hotas-config-toggle" element={<Lazy Component={HOTASConfigPageToggle} />} />
+        <Route path="/theme/hotas-test" element={<Navigate to="/settings/hotas" replace />} />
+
+        {/* Login Route */}
+        <Route path="/login" element={<RSILoginPage onComplete={() => { completeWelcome(); window.location.href = '/'; }} />} />
+        
+        {/* Main User-Facing Dashboard & Feature Pages (with MainLayout) */}
+        <Route element={<MainLayout />}>
+          <Route index element={<MainDashboardPage />} />
+          <Route path="aerobook" element={<AerobookPage />} />
+          <Route path="new-player-guide" element={<NewPlayerGuidePage />} />
+          <Route path="loadout-builder" element={<LoadoutBuilderPage />} />
+          <Route path="economy-tracker" element={<EconomyTrackerPage />} />
+          <Route path="location-guide" element={<StatusViewPage />} />
+          <Route path="hotas-config" element={<HOTASConfigMainPage />} />
+          <Route path="hotas-config-modes-lab" element={<HOTASConfigModesLabPage />} />
+          <Route path="ship-database" element={<ShipDatabasePage />} />
+          <Route path="settings" element={<Lazy Component={SettingsPage} />} />
+          <Route path="settings/hotas" element={<Lazy Component={HOTASTestPage} />} />
+          <Route path="settings/theme" element={<Lazy Component={ThemePage} />} />
+          <Route path="about" element={<Lazy Component={AboutPage} />} />
+          <Route path="screenshots" element={<Lazy Component={ScreenshotsPage} />} />
+        </Route>
+
+        {/* Admin/Backend/Developer Area (with AdminLayout - Sidebar layout) */}
+        <Route element={<AdminLayout />}>
+          <Route path="dashboard-old" element={<DashboardPage />} />
+          <Route path="onboarding" element={<OnboardingChecklistPage />} />
+          <Route path="admin/chat/claude" element={<Lazy Component={AmazonQPage} />} />
+          <Route path="admin/chat/gemini" element={<Lazy Component={GeminiPage} />} />
+          <Route path="admin/ai-rules" element={<Lazy Component={AIRulesPage} />} />
+          <Route path="admin/analytics" element={<Lazy Component={AnalyticsPage} />} />
+          <Route path="admin/rate-limits" element={<Lazy Component={RateLimitPage} />} />
+          <Route path="admin/history" element={<Lazy Component={HistoryPage} />} />
+          <Route path="developer" element={<Lazy Component={DeveloperPage} />} />
+          <Route path="developer/context" element={<Lazy Component={DeveloperContextIndexPage} />} />
+          <Route path="developer/errors" element={<Lazy Component={ErrorLogPage} />} />
+          <Route path="developer/changes" element={<Lazy Component={ChangesPage} />} />
+          <Route path="developer/api-test" element={<Lazy Component={APITestPage} />} />
+          <Route path="developer/nav-charts-lab" element={<Lazy Component={DeveloperNavChartsLabPage} />} />
+          <Route path="developer/hotas-modes-lab" element={<HOTASConfigModesLabPage />} />
+          <Route path="developer/hotas-profile-matrix-lab" element={<DeveloperHotasProfileMatrixLabPage />} />
+          <Route path="developer/hotas-profile-matrix" element={<DeveloperHotasProfileMatrixLabPage />} />
+          <Route path="developer/hotas-profile-lab" element={<DeveloperHotasProfileMatrixLabPage />} />
+          <Route path="developer/video-catalog" element={<Lazy Component={DeveloperVideoCatalogPage} />} />
+        </Route>
+
+        {/* Streamer Area (with StreamerLayout - dedicated sidebar) */}
+        <Route element={<StreamerLayout />}>
+          <Route path="streamer" element={<Lazy Component={StreamerPage} />} />
+          <Route path="streamer/video-library" element={<Lazy Component={DeveloperVideoCatalogPage} />} />
+        </Route>
+
+        {/* Fallback: Always allow access, guard at component level if needed */}
+        <Route path="*" element={<Navigate to={welcomeCompleted ? "/" : "/login"} replace />} />
+      </Routes>
+    </>
+  );
+}
+
+export default App;
