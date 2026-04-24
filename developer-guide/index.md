@@ -17,6 +17,10 @@ url: /developer-guide/
     <div class="doc-desc">Dev tag system, tech stack, project structure, Arwes integration, color palette, backend API</div>
   </li>
   <li>
+    <a href="{{ '/documentation/developers/HELP-CONTENT-SYSTEM.md' | relative_url }}">Help Content System</a>
+    <div class="doc-desc">Centralized help architecture using code-based lookup, reusable content entries, and a unified Help Center/FAQ pattern</div>
+  </li>
+  <li>
     <a href="{{ '/developer-guide/hotas-config-guide' | relative_url }}">HOTAS Configuration Guide</a>
     <div class="doc-desc">Keybinding system architecture, data model, device integration, and usage instructions</div>
   </li>

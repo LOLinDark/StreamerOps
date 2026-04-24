@@ -10,9 +10,15 @@ const tools = [
   },
   {
     label: 'Playlist Builder',
-    desc: 'Order your downloaded videos into playlists with configurable transitions for OBS Browser Source playback.',
-    path: null,
-    status: 'soon',
+    desc: 'Build ordered ship-image + video sequences and export plans for VLC/OBS workflows immediately.',
+    path: '/streamer/sequence-builder',
+    status: 'live',
+  },
+  {
+    label: 'Ship PNG Cutout',
+    desc: 'Upload ship art, remove the background with Clipdrop, and download transparent PNG files.',
+    path: '/streamer/background-removal',
+    status: 'live',
   },
   {
     label: 'OBS Connect',

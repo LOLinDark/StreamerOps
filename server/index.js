@@ -20,11 +20,12 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { appendFileSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { registerMediaRoutes } from './api/media/index.js';
+import { registerImageRoutes } from './api/images/index.js';
 import { registerShipRoutes } from './api/ships/index.js';
 import { registerVersemailRoutes } from './api/versemail/index.js';
 import { registerHotasModeRoutes } from './peripherals/hotas/index.js';
@@ -198,6 +199,99 @@ app.get('/', (req, res) => {
 
 app.get('/api/version', (req, res) => {
   res.json({ version: SERVER_VERSION, projectHours: projectHours.totalHours, lastActive: projectHours.lastActiveHour });
+});
+
+function resolveFfmpegBinary() {
+  const configuredPath = process.env.FFMPEG_BIN || '';
+
+  if (configuredPath) {
+    try {
+      const info = statSync(configuredPath);
+      if (info?.isFile()) {
+        return { installed: true, source: 'env', path: configuredPath };
+      }
+    } catch {
+      // Ignore stat failures and fall back to PATH check.
+    }
+  }
+
+  try {
+    execSync('ffmpeg -version', { stdio: 'ignore' });
+    return { installed: true, source: 'path', path: 'ffmpeg' };
+  } catch {
+    return { installed: false, source: configuredPath ? 'env-missing' : 'not-found', path: configuredPath || null };
+  }
+}
+
+app.get('/api/system/ffmpeg-status', (req, res) => {
+  return res.json(resolveFfmpegBinary());
+});
+
+app.post('/api/streamer/render-ffconcat', (req, res) => {
+  try {
+    const ffconcat = String(req.body?.ffconcat || '');
+    const requestedName = String(req.body?.outputName || 'streamerops-sequence').trim();
+
+    if (!ffconcat || !ffconcat.includes('ffconcat version 1.0')) {
+      return res.status(400).json({ error: 'Invalid ffconcat payload' });
+    }
+
+    const ffmpeg = resolveFfmpegBinary();
+    if (!ffmpeg.installed || !ffmpeg.path) {
+      return res.status(500).json({ error: 'FFmpeg not found. Configure FFMPEG_BIN or add ffmpeg to PATH.' });
+    }
+
+    const safeBaseName = (requestedName || 'streamerops-sequence')
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 80) || 'streamerops-sequence';
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const rendersDir = join(__dirname, 'data', 'renders');
+    if (!existsSync(rendersDir)) {
+      mkdirSync(rendersDir, { recursive: true });
+    }
+
+    const concatFileName = `${safeBaseName}-${timestamp}.ffconcat`;
+    const outputFileName = `${safeBaseName}-${timestamp}.mp4`;
+    const concatPath = join(rendersDir, concatFileName);
+    const outputPath = join(rendersDir, outputFileName);
+
+    writeFileSync(concatPath, ffconcat, 'utf-8');
+
+    execFileSync(
+      ffmpeg.path,
+      [
+        '-y',
+        '-safe',
+        '0',
+        '-f',
+        'concat',
+        '-i',
+        concatPath,
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        outputPath,
+      ],
+      { stdio: 'pipe' }
+    );
+
+    return res.json({
+      success: true,
+      ffmpegSource: ffmpeg.source,
+      concatPath,
+      outputPath,
+      outputFileName,
+    });
+  } catch (error) {
+    const details = error?.stderr ? String(error.stderr).slice(0, 1200) : error.message;
+    log('FFconcat render failed:', details);
+    return res.status(500).json({ error: 'Failed to render ffconcat with FFmpeg', details });
+  }
 });
 
 // --- RSI Citizen API endpoint ---
@@ -908,6 +1002,7 @@ app.post('/api/hotas/open-folder', (req, res) => {
 });
 
 registerMediaRoutes(app);
+registerImageRoutes(app);
 registerShipRoutes(app);
 registerVersemailRoutes(app);
 registerHotasModeRoutes(app);

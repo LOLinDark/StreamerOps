@@ -40,6 +40,8 @@ const DeveloperContextIndexPage = lazy(() => import('./pages/DeveloperContextInd
 const DeveloperNavChartsLabPage = lazy(() => import('./pages/DeveloperNavChartsLabPage'));
 const DeveloperVideoCatalogPage = lazy(() => import('./pages/DeveloperVideoCatalogPage'));
 const StreamerPage = lazy(() => import('./pages/StreamerPage'));
+const StreamerSequenceBuilderPage = lazy(() => import('./pages/StreamerSequenceBuilderPage'));
+const StreamerBackgroundRemovalPage = lazy(() => import('./pages/StreamerBackgroundRemovalPage'));
 
 // Theme Lab Pages
 const WelcomeOnline = lazy(() => import('./pages/theme/WelcomeOnline'));
@@ -146,6 +148,8 @@ function App() {
         <Route element={<StreamerLayout />}>
           <Route path="streamer" element={<Lazy Component={StreamerPage} />} />
           <Route path="streamer/video-library" element={<Lazy Component={DeveloperVideoCatalogPage} />} />
+          <Route path="streamer/sequence-builder" element={<Lazy Component={StreamerSequenceBuilderPage} />} />
+          <Route path="streamer/background-removal" element={<Lazy Component={StreamerBackgroundRemovalPage} />} />
         </Route>
 
         {/* Fallback: Always allow access, guard at component level if needed */}

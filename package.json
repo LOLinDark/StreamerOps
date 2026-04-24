@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postinstall": "node scripts/sync-ffmpeg-core.mjs",
+    "ffmpeg:sync-core": "node scripts/sync-ffmpeg-core.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "build:guard": "npm run build && npm run check:bundle",
     "lint": "eslint .",
@@ -26,6 +28,9 @@
     "@arwes/theme": "1.0.0-next.25020502",
     "@aws-sdk/client-bedrock-runtime": "^3.1034.0",
     "@aws-sdk/client-qbusiness": "^3.1034.0",
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@google/generative-ai": "^0.24.1",
     "@mantine/core": "^8.3.13",
     "@mantine/dates": "^8.3.13",

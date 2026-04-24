@@ -48,11 +48,21 @@ export default defineConfig(({ command }) => ({
     host: 'localhost',
     port: 4342,
     strictPort: true,
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true
       }
+    }
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin'
     }
   }
 }))

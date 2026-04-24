@@ -22,6 +22,7 @@ User-facing documentation and getting started materials:
 #### **Developer Docs** (`/developers/`)
 Technical reference for developers and architects:
 - [Developer Reference](developers/DEVELOPER-REFERENCE.md) — Core architecture and codebase structure
+- [Help Content System](developers/HELP-CONTENT-SYSTEM.md) — Centralized help architecture with code-driven contextual display + Help Center model
 - [Developer Map](developers/DEVELOPER-MAP.md) — Codebase visual guide
 - [Security Guide](developers/SECURITY.md) — Security policies and best practices
 - [API Integration Guide](developers/API-INTEGRATION.md) — Backend API reference and integration patterns

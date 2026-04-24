@@ -146,6 +146,9 @@ export default function StatusViewPage() {
               <Text size="sm" c="dimmed">
                 These are not automated reports yet. Validate them directly in OBS (Program/Preview windows) and VLC (playlist order and timing).
               </Text>
+              <Text size="sm" c="dimmed">
+                Playlist sequencing means the exact top-to-bottom item order in VLC. Transition timing means when the visual handoff appears between clips.
+              </Text>
               {readinessChecklist.map((item) => (
                 <Group key={item} align="flex-start" gap="sm">
                   <Badge color="cyan" variant="light">NEXT</Badge>

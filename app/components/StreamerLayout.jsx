@@ -109,8 +109,17 @@ export default function StreamerLayout() {
           />
           <NavLink
             label="Playlist Builder"
-            disabled
-            description="Coming soon"
+            active={isActive('/streamer/sequence-builder')}
+            component={Link}
+            to="/streamer/sequence-builder"
+            description="Image + video sequencing"
+          />
+          <NavLink
+            label="Ship PNG Cutout"
+            active={isActive('/streamer/background-removal')}
+            component={Link}
+            to="/streamer/background-removal"
+            description="AI background removal"
           />
 
           <Divider my="xs" label="OBS" labelPosition="center" />
