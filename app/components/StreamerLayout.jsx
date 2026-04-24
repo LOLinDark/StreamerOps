@@ -57,8 +57,10 @@ export default function StreamerLayout() {
   return (
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 220, breakpoint: 'sm' }}
-      aside={{ width: 200, breakpoint: 'sm' }}
+      // VS Code's built-in browser is often narrow; collapse side rails at mobile
+      // widths so Streamer tools remain clickable and testable.
+      navbar={{ width: 220, breakpoint: 'md', collapsed: { mobile: true } }}
+      aside={{ width: 200, breakpoint: 'md', collapsed: { mobile: true } }}
       padding="md"
     >
       <AppShell.Header p="md">

@@ -22,11 +22,12 @@ const logger = createLogger('ytdlp');
 const VALID_VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
 
 // yt-dlp format selector:
-// Prefer MP4 video ≤1080p + best audio, merge to MP4.
-// Falls back to best single-file format ≤1080p.
-// This covers 1920×824 cinema crops which fit within 1080p height.
+// Prefer browser-friendly H.264/AVC video + M4A audio, merged to MP4.
+// This avoids many AV1/VP9 variants that fail in ffmpeg.wasm decode paths.
+// Falls back to generic MP4/best as a last resort when AVC streams are missing.
+// This still covers 1920x824 cinema crops which fit within 1080p height.
 const FORMAT_SELECTOR =
-  'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best';
+  'bestvideo[vcodec*=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec*=avc1][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][vcodec*=avc1][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best';
 
 const MERGE_FORMAT = 'mp4';
 

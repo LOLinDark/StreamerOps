@@ -24,7 +24,13 @@ import { IconArrowDown, IconArrowUp, IconDownload, IconEye, IconEyeOff, IconFold
 
 const SEQUENCE_LIBRARY_KEY = 'streamerops.sequenceLibrary.v1';
 const SEQUENCE_DRAFT_KEY = 'streamerops.sequenceDraft.v1';
+const METHOD_VISIBILITY_KEY = 'streamerops.sequenceMethodVisibility.v1';
 const BROWSER_FFMPEG_LOAD_TIMEOUT_MS = 45000;
+const FFMPEG_CLASS_WORKER_URL = '/vendor/ffmpeg/ffmpeg-worker.js';
+const DIRECTORY_HANDLES_DB = 'streamerops.directoryHandles.v1';
+const DIRECTORY_HANDLES_STORE = 'handles';
+const IMAGE_HANDLE_KEY = 'bulk-images';
+const VIDEO_HANDLE_KEY = 'bulk-videos';
 
 function sanitizeConcatPath(input) {
   return String(input || '')
@@ -111,6 +117,31 @@ function inferVirtualExtension(source, type) {
   return type === 'image' ? 'png' : 'mp4';
 }
 
+function toStrictBoolean(value, fallback = true) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return fallback;
+}
+
+function normalizeMethodVisibility(input, fallback = {
+  addImage: true,
+  addVideo: true,
+  quickPair: true,
+  bulkMatch: true,
+}) {
+  const source = input && typeof input === 'object' ? input : {};
+  return {
+    addImage: toStrictBoolean(source.addImage, fallback.addImage),
+    addVideo: toStrictBoolean(source.addVideo, fallback.addVideo),
+    quickPair: toStrictBoolean(source.quickPair, fallback.quickPair),
+    bulkMatch: toStrictBoolean(source.bulkMatch, fallback.bulkMatch),
+  };
+}
+
 function sanitizeOutputName(input) {
   return String(input || 'streamerops-sequence')
     .toLowerCase()
@@ -118,6 +149,18 @@ function sanitizeOutputName(input) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 60) || 'streamerops-sequence';
+}
+
+function toPersistableBulkFiles(files) {
+  return files.map((file) => ({
+    name: String(file?.name || ''),
+    webkitRelativePath: String(file?.webkitRelativePath || ''),
+    type: String(file?.type || ''),
+  }));
+}
+
+function canMakePreview(file) {
+  return typeof File !== 'undefined' && file instanceof File;
 }
 
 function downloadTextFile(content, filename, mimeType = 'text/plain') {
@@ -157,9 +200,104 @@ function titleFromStem(name) {
     .trim();
 }
 
+function getBaseName(input) {
+  return String(input || '').replace(/\\/g, '/').split('/').pop() || '';
+}
+
+function buildLookupKeys(input) {
+  const raw = String(input || '').trim();
+  const normalized = raw.replace(/\\/g, '/');
+  const base = getBaseName(normalized);
+  const segments = normalized.split('/').filter(Boolean);
+  const suffixes = segments.map((_, index) => segments.slice(index).join('/'));
+
+  return Array.from(new Set([
+    normalized,
+    normalized.toLowerCase(),
+    base,
+    base.toLowerCase(),
+    ...suffixes,
+    ...suffixes.map((suffix) => suffix.toLowerCase()),
+  ].filter(Boolean)));
+}
+
+function findEntryForSource(source, lookup, entries) {
+  const directMatch = buildLookupKeys(source)
+    .map((key) => lookup.get(key))
+    .find(Boolean);
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const normalizedSource = String(source || '').replace(/\\/g, '/').toLowerCase();
+  const sourceBase = getBaseName(normalizedSource);
+
+  return entries.find((entry) => {
+    const relativePath = String(entry.path || entry.file?.name || '').replace(/\\/g, '/').toLowerCase();
+    return relativePath.endsWith(normalizedSource) || getBaseName(relativePath) === sourceBase;
+  }) || null;
+}
+
+function openHandlesDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DIRECTORY_HANDLES_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DIRECTORY_HANDLES_STORE)) {
+        db.createObjectStore(DIRECTORY_HANDLES_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Failed to open directory handle database.'));
+  });
+}
+
+async function readStoredDirectoryHandle(key) {
+  const db = await openHandlesDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DIRECTORY_HANDLES_STORE, 'readonly');
+    const store = tx.objectStore(DIRECTORY_HANDLES_STORE);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error('Failed reading stored directory handle.'));
+  });
+}
+
+async function writeStoredDirectoryHandle(key, handle) {
+  const db = await openHandlesDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(DIRECTORY_HANDLES_STORE, 'readwrite');
+    const store = tx.objectStore(DIRECTORY_HANDLES_STORE);
+    const request = store.put(handle, key);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error || new Error('Failed writing directory handle.'));
+  });
+}
+
+async function readFilesFromDirectoryHandle(handle, relativePrefix = '') {
+  const files = [];
+
+  // eslint-disable-next-line no-restricted-syntax
+  for await (const entry of handle.values()) {
+    const nextPath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+    if (entry.kind === 'file') {
+      const file = await entry.getFile();
+      files.push({ file, path: nextPath });
+    } else if (entry.kind === 'directory') {
+      const nested = await readFilesFromDirectoryHandle(entry, nextPath);
+      files.push(...nested);
+    }
+  }
+
+  return files;
+}
+
 // Determine if a source string is previewable in the browser
 function isPreviewable(source) {
   if (!source) return false;
+  if (typeof File !== 'undefined' && source instanceof File) return true;
+  if (typeof Blob !== 'undefined' && source instanceof Blob) return true;
   return /^blob:|^https?:\/\//i.test(source);
 }
 
@@ -238,6 +376,10 @@ export default function StreamerSequenceBuilderPage() {
   const [browserRenderProgress, setBrowserRenderProgress] = useState(0);
   const [browserRenderMessage, setBrowserRenderMessage] = useState('Idle');
   const [browserRenderError, setBrowserRenderError] = useState('');
+  const [browserRenderDiagnostics, setBrowserRenderDiagnostics] = useState([]);
+  const [browserPrecheckRunning, setBrowserPrecheckRunning] = useState(false);
+  const [browserPrecheckSummary, setBrowserPrecheckSummary] = useState('');
+  const [browserPrecheckResults, setBrowserPrecheckResults] = useState([]);
   const [browserOutputUrl, setBrowserOutputUrl] = useState('');
   const [browserOutputName, setBrowserOutputName] = useState('');
 
@@ -264,17 +406,53 @@ export default function StreamerSequenceBuilderPage() {
   // Bulk folder match fields
   const [bulkImageFiles, setBulkImageFiles] = useState([]);
   const [bulkVideoFiles, setBulkVideoFiles] = useState([]);
+  const [restoredImageEntries, setRestoredImageEntries] = useState([]);
+  const [restoredVideoEntries, setRestoredVideoEntries] = useState([]);
+  const [restoreHandlesMessage, setRestoreHandlesMessage] = useState('');
   const [bulkImageDurationSec, setBulkImageDurationSec] = useState(2);
   const [excludeUnmatchedVideos, setExcludeUnmatchedVideos] = useState(true);
-  const [methodVisibility, setMethodVisibility] = useState({
-    addImage: true,
-    addVideo: true,
-    quickPair: true,
-    bulkMatch: true,
+  const [methodVisibility, setMethodVisibility] = useState(() => {
+    const defaults = {
+      addImage: true,
+      addVideo: true,
+      quickPair: true,
+      bulkMatch: true,
+    };
+
+    try {
+      const raw = localStorage.getItem(METHOD_VISIBILITY_KEY);
+      if (!raw) return defaults;
+      return normalizeMethodVisibility(JSON.parse(raw), defaults);
+    } catch {
+      return defaults;
+    }
   });
 
   function createId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function pushBrowserDiagnostic(message, level = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const line = `${timestamp} [${level}] ${message}`;
+    setBrowserRenderDiagnostics((prev) => [...prev.slice(-39), line]);
+  }
+
+  function getErrorMessage(error, fallback = 'Unknown error') {
+    if (typeof error === 'string' && error.trim()) return error;
+    if (error && typeof error === 'object') {
+      const maybeMessage = String(error.message || '').trim();
+      if (maybeMessage) return maybeMessage;
+      const asString = String(error).trim();
+      if (asString && asString !== '[object Object]') return asString;
+      try {
+        const json = JSON.stringify(error);
+        if (json && json !== '{}') return json;
+      } catch {
+        // ignore serialization issues
+      }
+    }
+    return fallback;
   }
 
   function toPersistableSequence(items) {
@@ -331,12 +509,70 @@ export default function StreamerSequenceBuilderPage() {
 
     if (kind === 'image') {
       setBulkImageFiles(filtered);
+      setRestoredImageEntries([]);
     } else {
       setBulkVideoFiles(filtered);
+      setRestoredVideoEntries([]);
     }
 
     event.target.value = '';
   }, []);
+
+  const supportsDirectoryHandles =
+    typeof window !== 'undefined' &&
+    typeof window.showDirectoryPicker === 'function' &&
+    typeof indexedDB !== 'undefined';
+
+  const restoreFilesFromStoredHandle = useCallback(async (kind, requestPermission = false) => {
+    if (!supportsDirectoryHandles) return false;
+
+    const storageKey = kind === 'image' ? IMAGE_HANDLE_KEY : VIDEO_HANDLE_KEY;
+    const handle = await readStoredDirectoryHandle(storageKey);
+    if (!handle) return false;
+
+    const permissionState = requestPermission
+      ? await handle.requestPermission({ mode: 'read' })
+      : await handle.queryPermission({ mode: 'read' });
+
+    if (permissionState !== 'granted') {
+      return false;
+    }
+
+    const files = await readFilesFromDirectoryHandle(handle);
+    const filteredEntries = files.filter(({ file }) =>
+      kind === 'image' ? String(file.type || '').startsWith('image/') : String(file.type || '').startsWith('video/')
+    );
+
+    const nextFiles = filteredEntries.map((entry) => entry.file);
+    if (kind === 'image') {
+      setBulkImageFiles(nextFiles);
+      setRestoredImageEntries(filteredEntries);
+    } else {
+      setBulkVideoFiles(nextFiles);
+      setRestoredVideoEntries(filteredEntries);
+    }
+
+    return true;
+  }, [supportsDirectoryHandles]);
+
+  const chooseAndRememberDirectory = useCallback(async (kind) => {
+    if (!supportsDirectoryHandles) {
+      setRestoreHandlesMessage('Remembered folder reconnect is not supported in this browser.');
+      return;
+    }
+
+    try {
+      const handle = await window.showDirectoryPicker({ mode: 'read' });
+      const storageKey = kind === 'image' ? IMAGE_HANDLE_KEY : VIDEO_HANDLE_KEY;
+      await writeStoredDirectoryHandle(storageKey, handle);
+      await restoreFilesFromStoredHandle(kind, true);
+      setRestoreHandlesMessage(`${kind === 'image' ? 'Image' : 'Video'} folder connected and remembered.`);
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        setRestoreHandlesMessage(`Could not connect ${kind} folder: ${error?.message || 'unknown error'}`);
+      }
+    }
+  }, [restoreFilesFromStoredHandle, supportsDirectoryHandles]);
 
   function addImage() {
     const source = imagePath.trim() || imagePreviewUrl;
@@ -438,7 +674,7 @@ export default function StreamerSequenceBuilderPage() {
           pairId,
           title: `${titleFromStem(matchingImage.name)} Transition`,
           source: matchingImage.webkitRelativePath || matchingImage.name,
-          previewUrl: makeBlobUrl(matchingImage),
+          previewUrl: canMakePreview(matchingImage) ? makeBlobUrl(matchingImage) : undefined,
           durationSec: Number(bulkImageDurationSec) || 2,
         });
         additions.push({
@@ -447,7 +683,7 @@ export default function StreamerSequenceBuilderPage() {
           pairId,
           title: titleFromStem(videoFile.name),
           source: videoFile.webkitRelativePath || videoFile.name,
-          previewUrl: makeBlobUrl(videoFile),
+          previewUrl: canMakePreview(videoFile) ? makeBlobUrl(videoFile) : undefined,
           durationSec: 0,
         });
         return;
@@ -459,7 +695,7 @@ export default function StreamerSequenceBuilderPage() {
           type: 'video',
           title: titleFromStem(videoFile.name),
           source: videoFile.webkitRelativePath || videoFile.name,
-          previewUrl: makeBlobUrl(videoFile),
+          previewUrl: canMakePreview(videoFile) ? makeBlobUrl(videoFile) : undefined,
           durationSec: 0,
         });
       }
@@ -601,6 +837,13 @@ export default function StreamerSequenceBuilderPage() {
         if (parsedDraft && Array.isArray(parsedDraft.sequence)) {
           setSequence(parsedDraft.sequence);
           setSequenceName(parsedDraft.name || 'Untitled Sequence');
+          setBulkImageFiles(Array.isArray(parsedDraft.bulkImageFiles) ? parsedDraft.bulkImageFiles : []);
+          setBulkVideoFiles(Array.isArray(parsedDraft.bulkVideoFiles) ? parsedDraft.bulkVideoFiles : []);
+          setBulkImageDurationSec(Number(parsedDraft.bulkImageDurationSec) || 2);
+          setExcludeUnmatchedVideos(Boolean(parsedDraft.excludeUnmatchedVideos));
+          if (parsedDraft.methodVisibility && typeof parsedDraft.methodVisibility === 'object') {
+            setMethodVisibility((prev) => normalizeMethodVisibility(parsedDraft.methodVisibility, prev));
+          }
         }
       }
     } catch {
@@ -609,11 +852,59 @@ export default function StreamerSequenceBuilderPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    if (!supportsDirectoryHandles) {
+      return () => {
+        active = false;
+      };
+    }
+
+    async function restoreRememberedFolders() {
+      try {
+        const [imagesRestored, videosRestored] = await Promise.all([
+          restoreFilesFromStoredHandle('image', false),
+          restoreFilesFromStoredHandle('video', false),
+        ]);
+
+        if (!active) return;
+
+        if (imagesRestored || videosRestored) {
+          setRestoreHandlesMessage('Remembered media folders restored for this session.');
+        }
+      } catch {
+        if (active) {
+          setRestoreHandlesMessage('Could not auto-restore remembered folders. Use reconnect buttons below.');
+        }
+      }
+    }
+
+    restoreRememberedFolders();
+
+    return () => {
+      active = false;
+    };
+  }, [restoreFilesFromStoredHandle, supportsDirectoryHandles]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(METHOD_VISIBILITY_KEY, JSON.stringify(methodVisibility));
+    } catch {
+      // Ignore write errors (private mode / quota issues)
+    }
+  }, [methodVisibility]);
+
+  useEffect(() => {
     const draft = {
       version: 1,
       name: sequenceName.trim() || 'Untitled Sequence',
       updatedAt: new Date().toISOString(),
       sequence: toPersistableSequence(sequence),
+      bulkImageFiles: toPersistableBulkFiles(bulkImageFiles),
+      bulkVideoFiles: toPersistableBulkFiles(bulkVideoFiles),
+      bulkImageDurationSec,
+      excludeUnmatchedVideos,
+      methodVisibility,
     };
 
     try {
@@ -621,7 +912,7 @@ export default function StreamerSequenceBuilderPage() {
     } catch {
       // Ignore write errors (private mode / quota issues)
     }
-  }, [sequence, sequenceName]);
+  }, [sequence, sequenceName, bulkImageFiles, bulkVideoFiles, bulkImageDurationSec, excludeUnmatchedVideos, methodVisibility]);
 
   useEffect(() => {
     if (!selectedSequenceId) return;
@@ -697,6 +988,7 @@ export default function StreamerSequenceBuilderPage() {
 
   async function ensureBrowserFfmpegLoaded() {
     if (ffmpegWasmRef.current) {
+      pushBrowserDiagnostic('FFmpeg wasm instance already loaded. Reusing cached worker.', 'info');
       return ffmpegWasmRef.current;
     }
 
@@ -706,27 +998,55 @@ export default function StreamerSequenceBuilderPage() {
 
     setBrowserWasmLoading(true);
     setBrowserRenderMessage('Loading FFmpeg WebAssembly core...');
+    setBrowserRenderProgress(0);
 
     try {
-      const [{ FFmpeg }, { toBlobURL }] = await Promise.all([
-        import('@ffmpeg/ffmpeg'),
-        import('@ffmpeg/util'),
-      ]);
+      const diagnostics = [];
+
+      diagnostics.push(`isolated=${String(window.crossOriginIsolated)}`);
+      diagnostics.push(`workerURL=${FFMPEG_CLASS_WORKER_URL || 'missing'}`);
+      pushBrowserDiagnostic('Starting FFmpeg wasm loader.', 'info');
+
+      setBrowserRenderMessage('Loading FFmpeg module...');
+      const { FFmpeg } = await import('@ffmpeg/ffmpeg');
 
       const ffmpeg = new FFmpeg();
       ffmpeg.on('progress', ({ progress }) => {
         const next = Number.isFinite(progress) ? Math.max(0, Math.min(100, Math.round(progress * 100))) : 0;
         setBrowserRenderProgress(next);
       });
+      ffmpeg.on('log', ({ type, message }) => {
+        if (type === 'fferr' || /error|invalid|failed|missing/i.test(String(message || ''))) {
+          pushBrowserDiagnostic(`ffmpeg:${type} ${String(message || '').slice(0, 300)}`, 'error');
+        }
+      });
 
+      setBrowserRenderMessage('Checking FFmpeg core assets...');
+      const [coreResponse, wasmResponse] = await Promise.all([
+        fetch('/vendor/ffmpeg/ffmpeg-core.js', { method: 'HEAD' }),
+        fetch('/vendor/ffmpeg/ffmpeg-core.wasm', { method: 'HEAD' }),
+      ]);
+
+      diagnostics.push(`core.js=${coreResponse.status}`);
+      diagnostics.push(`core.wasm=${wasmResponse.status}`);
+      pushBrowserDiagnostic(`Asset probe core.js=${coreResponse.status} core.wasm=${wasmResponse.status}`, 'info');
+
+      if (!coreResponse.ok || !wasmResponse.ok) {
+        throw new Error(`FFmpeg core assets unavailable (${diagnostics.join(', ')})`);
+      }
+
+      // Use direct same-origin paths — toBlobURL loses directory context
+      // when the JS is served as a blob:, breaking relative WASM resolution.
+      setBrowserRenderMessage('Spawning FFmpeg worker...');
       await Promise.race([
         ffmpeg.load({
-          coreURL: await toBlobURL('/vendor/ffmpeg/ffmpeg-core.js', 'text/javascript'),
-          wasmURL: await toBlobURL('/vendor/ffmpeg/ffmpeg-core.wasm', 'application/wasm'),
+          classWorkerURL: FFMPEG_CLASS_WORKER_URL,
+          coreURL: '/vendor/ffmpeg/ffmpeg-core.js',
+          wasmURL: '/vendor/ffmpeg/ffmpeg-core.wasm',
         }),
         new Promise((_, reject) => {
           setTimeout(() => {
-            reject(new Error('Timed out loading FFmpeg WebAssembly core. Refresh the page and try again.'));
+            reject(new Error(`Timed out loading FFmpeg WebAssembly core. Diagnostics: ${diagnostics.join(', ')}`));
           }, BROWSER_FFMPEG_LOAD_TIMEOUT_MS);
         }),
       ]);
@@ -734,17 +1054,23 @@ export default function StreamerSequenceBuilderPage() {
       ffmpegWasmRef.current = ffmpeg;
       setBrowserWasmReady(true);
       setBrowserRenderMessage('FFmpeg WebAssembly ready.');
+      pushBrowserDiagnostic('FFmpeg wasm worker loaded successfully.', 'ok');
       return ffmpeg;
+    } catch (error) {
+      const details = error?.message || 'Unknown FFmpeg load error.';
+      setBrowserRenderError(`FFmpeg load failed: ${details}`);
+      pushBrowserDiagnostic(`Loader failure: ${details}`, 'error');
+      if (/blocked_by_response|blocked/i.test(details)) {
+        pushBrowserDiagnostic('Detected response-policy block. Check COEP/COOP headers for /vendor/ffmpeg/* responses.', 'error');
+      }
+      throw error;
     } finally {
       setBrowserWasmLoading(false);
     }
   }
 
   async function renderInBrowserWithWasm() {
-    const browserSequence = sequence.map((item) => ({
-      ...item,
-      runtimeSource: item.previewUrl || item.source,
-    }));
+    const browserSequence = resolveRuntimeSequence();
 
     if (browserSequence.length === 0) {
       setBrowserRenderError('Add sequence items before starting browser render.');
@@ -753,7 +1079,7 @@ export default function StreamerSequenceBuilderPage() {
 
     const unsupported = browserSequence.filter((item) => !isPreviewable(item.runtimeSource));
     if (unsupported.length > 0) {
-      setBrowserRenderError('Browser render only supports picked files/blob URLs or reachable http(s) URLs.');
+      setBrowserRenderError('Browser render only supports picked files/blob URLs or reachable http(s) URLs. Reconnect remembered folders if needed.');
       return;
     }
 
@@ -761,43 +1087,85 @@ export default function StreamerSequenceBuilderPage() {
     setBrowserRenderError('');
     setBrowserRenderProgress(0);
     setBrowserRenderMessage('Preparing browser render...');
+    setBrowserRenderDiagnostics([]);
+    pushBrowserDiagnostic(`Render requested for ${browserSequence.length} sequence item(s).`, 'info');
 
     try {
       const ffmpeg = await ensureBrowserFfmpegLoaded();
       const { fetchFile } = await import('@ffmpeg/util');
 
-      const lines = ['ffconcat version 1.0'];
       const inputPrefix = `${Date.now()}`;
+      const inputArgs = [];
+      const filterPrep = [];
+      const concatTags = [];
 
       for (let index = 0; index < browserSequence.length; index += 1) {
         const item = browserSequence[index];
         const source = item.runtimeSource;
-        const ext = inferVirtualExtension(source, item.type);
+        const ext = inferVirtualExtension(typeof source === 'string' ? source : source?.name, item.type);
         const virtualName = `seq-${inputPrefix}-${String(index + 1).padStart(4, '0')}.${ext}`;
+        const itemLabel = `item ${index + 1} "${item.title || 'Untitled'}"`;
 
-        setBrowserRenderMessage(`Caching source ${index + 1}/${browserSequence.length}...`);
-        await ffmpeg.writeFile(virtualName, await fetchFile(source));
+        try {
+          // Preload each source into ffmpeg.wasm's virtual filesystem before concat.
+          setBrowserRenderMessage(`Caching source ${index + 1}/${browserSequence.length}...`);
+          await ffmpeg.writeFile(virtualName, await fetchFile(source));
+          pushBrowserDiagnostic(`Cached ${item.type} source ${index + 1}/${browserSequence.length}: ${virtualName}`, 'info');
 
-        lines.push(`file '${virtualName}'`);
-        if (item.type === 'image' && Number(item.durationSec) > 0) {
-          lines.push(`duration ${Number(item.durationSec)}`);
+          if (item.type === 'image' && Number(item.durationSec) > 0) {
+            const duration = String(Number(item.durationSec) || 2);
+            inputArgs.push('-loop', '1', '-t', duration, '-i', virtualName);
+            pushBrowserDiagnostic(`Prepared image input ${virtualName} with duration ${duration}s`, 'info');
+          } else {
+            inputArgs.push('-i', virtualName);
+            pushBrowserDiagnostic(`Prepared video input ${virtualName}`, 'info');
+
+            // Fail fast with the exact problematic source when wasm cannot decode a clip.
+            setBrowserRenderMessage(`Validating video decode ${index + 1}/${browserSequence.length}...`);
+            const decodeCheckExit = await ffmpeg.exec([
+              '-v',
+              'error',
+              '-i',
+              virtualName,
+              '-frames:v',
+              '1',
+              '-f',
+              'null',
+              '-',
+            ]);
+
+            if (decodeCheckExit !== 0) {
+              throw new Error(
+                `Video decode precheck failed for ${itemLabel} (${item.source || virtualName}). ` +
+                'This clip may use an unsupported/corrupt AV1 bitstream for browser ffmpeg.wasm. Re-encode it to H.264 MP4 and retry.'
+              );
+            }
+
+            pushBrowserDiagnostic(`Video decode precheck passed for ${virtualName}`, 'ok');
+          }
+        } catch (itemError) {
+          const details = getErrorMessage(itemError, 'Unknown item preparation failure');
+          throw new Error(`Failed while preparing ${itemLabel}: ${details}`);
         }
+
+        const tag = `v${index}`;
+        filterPrep.push(`[${index}:v]fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[${tag}]`);
+        concatTags.push(`[${tag}]`);
       }
 
-      const concatName = `sequence-${inputPrefix}.ffconcat`;
       const outputName = `${sanitizeOutputName(sequenceName)}-${inputPrefix}.mp4`;
+      const filterComplex = `${filterPrep.join(';')};${concatTags.join('')}concat=n=${browserSequence.length}:v=1:a=0[outv]`;
 
       setBrowserRenderMessage('Rendering MP4 in browser (this can take a while)...');
-      await ffmpeg.writeFile(concatName, new TextEncoder().encode(lines.join('\n')));
+      pushBrowserDiagnostic(`Running ffmpeg graph concat for ${browserSequence.length} prepared input(s).`, 'info');
 
-      await ffmpeg.exec([
+      const ffmpegExitCode = await ffmpeg.exec([
         '-y',
-        '-safe',
-        '0',
-        '-f',
-        'concat',
-        '-i',
-        concatName,
+        ...inputArgs,
+        '-filter_complex',
+        filterComplex,
+        '-map',
+        '[outv]',
         '-pix_fmt',
         'yuv420p',
         '-movflags',
@@ -805,7 +1173,18 @@ export default function StreamerSequenceBuilderPage() {
         outputName,
       ]);
 
+      if (ffmpegExitCode !== 0) {
+        throw new Error(`FFmpeg exited with code ${ffmpegExitCode}. See diagnostics for decoder details.`);
+      }
+
+      pushBrowserDiagnostic(`ffmpeg render finished: ${outputName}`, 'ok');
+
       const outputData = await ffmpeg.readFile(outputName);
+      const outputByteLength = outputData?.buffer?.byteLength || 0;
+      if (outputByteLength <= 0) {
+        throw new Error('FFmpeg reported success but produced an empty output file.');
+      }
+
       const outputBlob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const nextUrl = URL.createObjectURL(outputBlob);
 
@@ -818,11 +1197,165 @@ export default function StreamerSequenceBuilderPage() {
       setBrowserOutputName(outputName);
       setBrowserRenderProgress(100);
       setBrowserRenderMessage('Browser render completed.');
+      pushBrowserDiagnostic('Browser render completed successfully.', 'ok');
     } catch (error) {
-      setBrowserRenderError(error?.message || 'Browser render failed.');
+      const rawMessage = getErrorMessage(error, 'Browser render failed.');
+      const hasAv1DecodeError = /av1|missing sequence header|invalid data found when processing input/i.test(rawMessage);
+
+      const userMessage = hasAv1DecodeError
+        ? 'Browser render failed: one or more source videos could not be decoded in wasm (AV1/invalid stream). Re-encode those clips to H.264 MP4 and try again.'
+        : rawMessage;
+
+      setBrowserRenderError(userMessage);
       setBrowserRenderMessage('Browser render failed.');
+      pushBrowserDiagnostic(`Render failure: ${rawMessage}`, 'error');
+      if (hasAv1DecodeError) {
+        pushBrowserDiagnostic('Detected AV1/bitstream decode failure. Recommended fallback: transcode source clips to H.264 (libx264) before browser render.', 'error');
+      }
     } finally {
       setBrowserRenderRunning(false);
+    }
+  }
+
+  function resolveRuntimeSequence() {
+    const rememberedEntries = [...restoredImageEntries, ...restoredVideoEntries];
+    const rememberedLookup = new Map();
+    rememberedEntries.forEach((entry) => {
+      buildLookupKeys(entry.path || entry.file?.name).forEach((key) => {
+        if (!rememberedLookup.has(key)) {
+          rememberedLookup.set(key, entry);
+        }
+      });
+    });
+
+    return sequence.map((item) => ({
+      ...item,
+      runtimeSource: (() => {
+        const direct = item.previewUrl || item.source;
+        if (isPreviewable(direct)) {
+          return direct;
+        }
+
+        const remembered = findEntryForSource(item.source, rememberedLookup, rememberedEntries);
+        return remembered ? remembered.file : direct;
+      })(),
+    }));
+  }
+
+  async function runBrowserCompatibilityPrecheck() {
+    const browserSequence = resolveRuntimeSequence();
+    setBrowserPrecheckResults([]);
+    setBrowserPrecheckSummary('');
+    setBrowserRenderError('');
+
+    if (browserSequence.length === 0) {
+      setBrowserPrecheckSummary('No sequence items to check.');
+      return;
+    }
+
+    setBrowserPrecheckRunning(true);
+    setBrowserRenderMessage('Running compatibility precheck...');
+    setBrowserRenderProgress(0);
+
+    try {
+      const ffmpeg = await ensureBrowserFfmpegLoaded();
+      const { fetchFile } = await import('@ffmpeg/util');
+      const results = [];
+
+      for (let index = 0; index < browserSequence.length; index += 1) {
+        const item = browserSequence[index];
+        const runtimeSource = item.runtimeSource;
+        const prefix = `Item ${index + 1} "${item.title || 'Untitled'}"`;
+
+        if (!isPreviewable(runtimeSource)) {
+          results.push({
+            index,
+            type: item.type,
+            title: item.title,
+            source: item.source,
+            ok: false,
+            reason: 'Source is not browser-readable (missing picked/remembered file or URL).',
+          });
+          continue;
+        }
+
+        if (item.type === 'image') {
+          results.push({
+            index,
+            type: item.type,
+            title: item.title,
+            source: item.source,
+            ok: true,
+            reason: 'Image source is browser-readable.',
+          });
+          continue;
+        }
+
+        const ext = inferVirtualExtension(typeof runtimeSource === 'string' ? runtimeSource : runtimeSource?.name, item.type);
+        const virtualName = `precheck-${Date.now()}-${String(index + 1).padStart(4, '0')}.${ext}`;
+        try {
+          setBrowserRenderMessage(`Precheck decode ${index + 1}/${browserSequence.length}...`);
+          await ffmpeg.writeFile(virtualName, await fetchFile(runtimeSource));
+          const decodeExit = await ffmpeg.exec([
+            '-v',
+            'error',
+            '-i',
+            virtualName,
+            '-frames:v',
+            '1',
+            '-f',
+            'null',
+            '-',
+          ]);
+
+          if (decodeExit === 0) {
+            results.push({
+              index,
+              type: item.type,
+              title: item.title,
+              source: item.source,
+              ok: true,
+              reason: 'Video decode precheck passed.',
+            });
+            pushBrowserDiagnostic(`${prefix} decode precheck passed.`, 'ok');
+          } else {
+            results.push({
+              index,
+              type: item.type,
+              title: item.title,
+              source: item.source,
+              ok: false,
+              reason: 'Video decode precheck failed (likely unsupported/corrupt codec bitstream).',
+            });
+            pushBrowserDiagnostic(`${prefix} decode precheck failed.`, 'error');
+          }
+        } catch (probeError) {
+          const details = getErrorMessage(probeError, 'probe operation failed');
+          results.push({
+            index,
+            type: item.type,
+            title: item.title,
+            source: item.source,
+            ok: false,
+            reason: `Video probe error: ${details}`,
+          });
+          pushBrowserDiagnostic(`${prefix} decode precheck error: ${details}`, 'error');
+        }
+      }
+
+      const passCount = results.filter((item) => item.ok).length;
+      const failCount = results.length - passCount;
+      setBrowserPrecheckResults(results);
+      setBrowserPrecheckSummary(`Compatibility precheck complete: ${passCount} passed, ${failCount} failed.`);
+      setBrowserRenderMessage('Compatibility precheck complete.');
+    } catch (error) {
+      const message = getErrorMessage(error, 'Compatibility precheck failed.');
+      setBrowserPrecheckSummary(message === 'Compatibility precheck failed.' ? message : `Compatibility precheck failed: ${message}`);
+      setBrowserRenderMessage('Compatibility precheck failed.');
+      setBrowserRenderError(message);
+      pushBrowserDiagnostic(`Compatibility precheck failure: ${message}`, 'error');
+    } finally {
+      setBrowserPrecheckRunning(false);
     }
   }
 
@@ -894,6 +1427,37 @@ export default function StreamerSequenceBuilderPage() {
     if (bulkImageFiles.length === 0 || bulkVideoFiles.length === 0) return 0;
     return bulkVideoFiles.length - bulkMatchCount;
   }, [bulkImageFiles, bulkVideoFiles, bulkMatchCount]);
+
+  const failedVideoPrecheckItems = useMemo(
+    () => browserPrecheckResults.filter((item) => !item.ok && item.type === 'video'),
+    [browserPrecheckResults]
+  );
+
+  const windowsTranscodeScript = useMemo(() => {
+    if (failedVideoPrecheckItems.length === 0) return '';
+
+    const lines = [
+      '@echo off',
+      'setlocal enabledelayedexpansion',
+      'REM Auto-generated by StreamerOps compatibility precheck',
+      'REM Re-encode failed clips to browser-friendly H.264 + yuv420p',
+      '',
+    ];
+
+    failedVideoPrecheckItems.forEach((item, idx) => {
+      const source = String(item.source || '').trim();
+      const sourceNoExt = source.replace(/\.[^.]+$/, '');
+      const output = `${sourceNoExt}.h264.mp4`;
+      lines.push(`echo [${idx + 1}/${failedVideoPrecheckItems.length}] Transcoding ${source}`);
+      lines.push(`ffmpeg -y -i "${source}" -c:v libx264 -pix_fmt yuv420p -movflags +faststart -c:a aac -b:a 192k "${output}"`);
+      lines.push('if errorlevel 1 echo FAILED: "' + source + '"');
+      lines.push('');
+    });
+
+    lines.push('echo Done. Update your sequence to use the *.h264.mp4 files.');
+    lines.push('pause');
+    return lines.join('\n');
+  }, [failedVideoPrecheckItems]);
 
   const unsupportedBrowserItemsCount = useMemo(
     () => sequence.filter((item) => !isPreviewable(item.previewUrl || item.source)).length,
@@ -1209,6 +1773,16 @@ export default function StreamerSequenceBuilderPage() {
               <Button variant="light" leftSection={<IconFolder size={16} />} onClick={() => bulkVideoDirRef.current?.click()}>
                 Choose Videos Directory
               </Button>
+              {supportsDirectoryHandles && (
+                <>
+                  <Button variant="subtle" onClick={() => chooseAndRememberDirectory('image')}>
+                    Connect + Remember PNG Folder
+                  </Button>
+                  <Button variant="subtle" onClick={() => chooseAndRememberDirectory('video')}>
+                    Connect + Remember Videos Folder
+                  </Button>
+                </>
+              )}
               <NumberInput
                 label="Image Duration (sec)"
                 min={1}
@@ -1218,6 +1792,9 @@ export default function StreamerSequenceBuilderPage() {
                 style={{ width: 180 }}
               />
             </Group>
+            {restoreHandlesMessage && (
+              <Text size="xs" c="dimmed">{restoreHandlesMessage}</Text>
+            )}
             <Group align="center" justify="space-between" wrap="wrap">
               <Switch
                 checked={excludeUnmatchedVideos}
@@ -1244,7 +1821,7 @@ export default function StreamerSequenceBuilderPage() {
               </Button>
             </Group>
             <Text size="xs" c="dimmed">
-              Note: Browser folder selection only provides relative filenames (not full Windows paths). Preview works immediately; adjust paths later if you need absolute export paths.
+              Note: Browser folder selection only provides relative filenames (not full Windows paths). Draft restore now keeps Bulk Match filenames and settings so you can re-run matching after reload, but preview blobs only exist in the current browser session.
             </Text>
           </Stack>
         </Card>
@@ -1335,9 +1912,17 @@ export default function StreamerSequenceBuilderPage() {
                 leftSection={<IconPlayerPlay size={16} />}
                 onClick={renderInBrowserWithWasm}
                 loading={browserRenderRunning || browserWasmLoading}
-                disabled={sequence.length === 0 || unsupportedBrowserItemsCount > 0 || !isBrowserIsolated}
+                disabled={sequence.length === 0}
               >
-                Render In Browser (Experimental)
+                Render In Browser
+              </Button>
+              <Button
+                variant="light"
+                onClick={runBrowserCompatibilityPrecheck}
+                loading={browserPrecheckRunning}
+                disabled={sequence.length === 0 || browserRenderRunning}
+              >
+                Run Compatibility Precheck
               </Button>
               <Button
                 variant="light"
@@ -1345,8 +1930,9 @@ export default function StreamerSequenceBuilderPage() {
                 onClick={downloadBrowserRender}
                 disabled={!browserOutputUrl}
               >
-                Download Browser MP4
+                Download MP4
               </Button>
+              {browserWasmReady && <Badge variant="light" color="cyan">FFmpeg WASM loaded</Badge>}
             </Group>
 
             <Button
@@ -1359,12 +1945,73 @@ export default function StreamerSequenceBuilderPage() {
             </Button>
           </Group>
 
-          <Text size="xs" c="dimmed" mt="xs">Status: {browserRenderMessage}</Text>
+          {browserRenderMessage !== 'Idle' && (
+            <Text size="xs" c="dimmed" mt="xs">Status: {browserRenderMessage}</Text>
+          )}
           {(browserRenderRunning || browserRenderProgress > 0) && (
             <Text size="xs" c="dimmed">Progress: {browserRenderProgress}%</Text>
           )}
-          {browserRenderError && (
-            <Text size="xs" c="red">{browserRenderError}</Text>
+          {browserRenderError && <Text size="xs" c="red">{browserRenderError}</Text>}
+          {browserPrecheckSummary && (
+            <Text size="xs" c={browserPrecheckSummary.includes('failed') ? 'orange' : 'teal'}>
+              {browserPrecheckSummary}
+            </Text>
+          )}
+          {browserPrecheckResults.length > 0 && (
+            <Card withBorder p="xs" mt="xs" style={{ borderColor: 'rgba(76, 201, 240, 0.35)' }}>
+              <Stack gap={4}>
+                <Text size="xs" fw={700}>Compatibility Results</Text>
+                {browserPrecheckResults.slice(0, 12).map((result) => (
+                  <Text
+                    key={`${result.index}-${result.source}`}
+                    size="xs"
+                    c={result.ok ? 'teal' : 'orange'}
+                    style={{ fontFamily: 'monospace' }}
+                  >
+                    {result.ok ? 'PASS' : 'FAIL'} #{result.index + 1} [{result.type}] {result.title || 'Untitled'} - {result.reason}
+                  </Text>
+                ))}
+              </Stack>
+            </Card>
+          )}
+          {failedVideoPrecheckItems.length > 0 && (
+            <Card withBorder p="xs" mt="xs" style={{ borderColor: 'rgba(255, 120, 120, 0.35)' }}>
+              <Stack gap={6}>
+                <Text size="xs" fw={700}>Transcode Fix Commands (Windows)</Text>
+                <Text size="xs" c="dimmed">
+                  {failedVideoPrecheckItems.length} failed video item(s) detected. Re-encode these to H.264 before browser render.
+                </Text>
+                <Group gap="xs" wrap="wrap">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    color="orange"
+                    onClick={() => downloadTextFile(windowsTranscodeScript, 'streamerops-transcode-failed-videos.cmd', 'text/plain')}
+                  >
+                    Download .cmd Script
+                  </Button>
+                </Group>
+                <Text size="xs" c="dimmed" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>
+                  {windowsTranscodeScript}
+                </Text>
+              </Stack>
+            </Card>
+          )}
+          {browserRenderDiagnostics.length > 0 && (
+            <Card withBorder p="xs" mt="xs" style={{ borderColor: 'rgba(255, 170, 0, 0.35)' }}>
+              <Stack gap={4}>
+                <Text size="xs" fw={700}>Render Diagnostics</Text>
+                {browserRenderDiagnostics.slice(-12).map((line, idx) => (
+                  <Text key={`${idx}-${line}`} size="xs" c="dimmed" style={{ fontFamily: 'monospace' }}>
+                    {line}
+                  </Text>
+                ))}
+              </Stack>
+            </Card>
+          )}
+          {browserOutputUrl && (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <video src={browserOutputUrl} controls style={{ width: '100%', borderRadius: 4, marginTop: 8 }} />
           )}
         </Card>
 
@@ -1397,7 +2044,7 @@ export default function StreamerSequenceBuilderPage() {
                 <Stack gap="sm">
                   <Title order={5}>FFmpeg Helper</Title>
                   <Text size="sm" c="dimmed">
-                    Use native FFmpeg for best stability. Browser Render (WASM) is available as an install-free fallback for smaller jobs.
+                    Use native FFmpeg for best stability, or use the Render In Browser button above the sequence table.
                   </Text>
 
                   {ffmpegStatus.loading ? (
@@ -1414,55 +2061,9 @@ export default function StreamerSequenceBuilderPage() {
                     </Text>
                   )}
 
-                  <Badge variant="light" color={isBrowserIsolated ? 'teal' : 'orange'}>
-                    Browser isolation: {isBrowserIsolated ? 'Ready' : 'Missing COOP/COEP'}
-                  </Badge>
-
-                  <Group gap="xs" wrap="wrap">
-                    <Button
-                      color="blue"
-                      leftSection={<IconPlayerPlay size={16} />}
-                      onClick={renderInBrowserWithWasm}
-                      loading={browserRenderRunning || browserWasmLoading}
-                      disabled={sequence.length === 0 || unsupportedBrowserItemsCount > 0 || !isBrowserIsolated}
-                    >
-                      Render In Browser (Experimental)
-                    </Button>
-                    <Button
-                      variant="light"
-                      leftSection={<IconDownload size={16} />}
-                      onClick={downloadBrowserRender}
-                      disabled={!browserOutputUrl}
-                    >
-                      Download Browser MP4
-                    </Button>
-                  </Group>
-
-                  {browserWasmReady && <Badge variant="light" color="cyan">FFmpeg WASM loaded</Badge>}
-
-                  <Text size="xs" c="dimmed">Status: {browserRenderMessage}</Text>
-                  {(browserRenderRunning || browserRenderProgress > 0) && (
-                    <Text size="xs" c="dimmed">Progress: {browserRenderProgress}%</Text>
-                  )}
-
-                  {unsupportedBrowserItemsCount > 0 && (
-                    <Text size="xs" c="orange">
-                      {unsupportedBrowserItemsCount} sequence item(s) use local path text only. This often happens after reload because browser file blobs are session-only. Re-run Bulk Match Import (or re-pick files) before Browser Render.
-                    </Text>
-                  )}
-
-                  {browserRenderError && (
-                    <Text size="xs" c="red">{browserRenderError}</Text>
-                  )}
-
-                  {browserOutputUrl && (
-                    // eslint-disable-next-line jsx-a11y/media-has-caption
-                    <video src={browserOutputUrl} controls style={{ width: '100%', borderRadius: 4 }} />
-                  )}
-
                   <Text size="sm" fw={600}>Quick guidance</Text>
                   <Text size="xs" c="dimmed">1. Native: export FFconcat and render with system FFmpeg.</Text>
-                  <Text size="xs" c="dimmed">2. Browser: use picked files/URLs and click Render In Browser.</Text>
+                  <Text size="xs" c="dimmed">2. Browser: build your sequence above, then click Render In Browser.</Text>
                   <Text size="xs" c="dimmed">3. For long edits, split into smaller compilations to reduce memory pressure.</Text>
 
                   <Button
