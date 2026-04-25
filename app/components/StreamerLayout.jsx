@@ -93,6 +93,7 @@ export default function StreamerLayout() {
             </Menu>
             <Button variant={path.startsWith('/developer') ? 'filled' : 'subtle'} component={Link} to="/developer">Developer</Button>
             <Button variant={path.startsWith('/streamer') ? 'filled' : 'subtle'} color="violet" component={Link} to="/streamer">Streamer</Button>
+            <Button variant={path.startsWith('/overlays') ? 'filled' : 'subtle'} color="pink" component={Link} to="/overlays">Overlays Studio</Button>
           </Group>
         </Group>
       </AppShell.Header>
@@ -104,10 +105,18 @@ export default function StreamerLayout() {
 
           <Divider my="xs" label="Playlist" labelPosition="center" />
           <NavLink
-            label="Video Library"
+            label="Followed Videos"
             active={isActive('/streamer/video-library')}
             component={Link}
             to="/streamer/video-library"
+            description="YouTube + Twitch sources"
+          />
+          <NavLink
+            label="Playlist Manager"
+            active={isActive('/streamer/playlists')}
+            component={Link}
+            to="/streamer/playlists"
+            description="Saved sequence health"
           />
           <NavLink
             label="Playlist Builder"
@@ -117,12 +126,29 @@ export default function StreamerLayout() {
             description="Image + video sequencing"
           />
           <NavLink
+            label="Scene Manager"
+            active={isActive('/streamer/scene-manager')}
+            component={Link}
+            to="/streamer/scene-manager"
+            description="Browser scene collections"
+          />
+          <NavLink
+            label="Browser Playout"
+            active={isActive('/streamer/playout')}
+            component={Link}
+            to="/streamer/playout"
+            description="Play scenes in browser"
+          />
+          <NavLink
             label="Ship PNG Cutout"
             active={isActive('/streamer/background-removal')}
             component={Link}
             to="/streamer/background-removal"
             description="AI background removal"
           />
+
+          <Divider my="xs" label="Overlays Studio" labelPosition="center" />
+          <NavLink label="Open Overlays Studio" active={isActive('/overlays')} component={Link} to="/overlays" />
 
           <Divider my="xs" label="OBS" labelPosition="center" />
           <NavLink label="Connect to OBS" disabled description="obs-websocket" />

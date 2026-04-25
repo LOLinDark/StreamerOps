@@ -15,6 +15,8 @@
  */
 
 import { createLogger } from '../../../lib/logger.js';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 import {
   getQueue,
   getQueueStats,
@@ -30,6 +32,7 @@ import {
 import { downloadVideo, checkYtDlpAvailable, checkFfmpegAvailable } from '../../../lib/ytdlp.js';
 
 const logger = createLogger('api.dev.download');
+const DEFAULT_STAR_CITIZEN_VIDEO_DIR = 'G:\\My Drive\\Gaming\\Star Citizen\\Behind-The-Ships';
 
 // SECURITY: Strict YouTube video ID validation
 const VALID_VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
@@ -38,6 +41,118 @@ const VALID_VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
 let workerRunning = false;
 let workerStopping = false;
 let currentVideoId = null;
+
+function extractVideoIdFromName(input) {
+  const raw = String(input || '');
+  const match = raw.match(/\[([A-Za-z0-9_-]{11})\]/);
+  return match ? match[1] : '';
+}
+
+function isLikelyVideoFileName(name) {
+  const lower = String(name || '').toLowerCase();
+  return ['.mp4', '.mkv', '.webm', '.mov', '.m4v'].some((ext) => lower.endsWith(ext));
+}
+
+function buildTitleFromFileName(name) {
+  const raw = String(name || '').replace(/\.[^.]+$/, '');
+  return raw
+    .replace(/\[[A-Za-z0-9_-]{11}\]/g, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Star Citizen Video';
+}
+
+function buildStarCitizenPlaylistFromDirectories(downloadDirs) {
+  const seenById = new Set();
+  const seenByName = new Set();
+  const files = [];
+
+  for (const dir of downloadDirs) {
+    const baseDir = resolve(dir);
+    let entries = [];
+    try {
+      entries = readdirSync(baseDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!isLikelyVideoFileName(entry.name)) continue;
+
+      const fileName = entry.name;
+      const videoId = extractVideoIdFromName(fileName);
+      const idKey = videoId ? `id:${videoId}` : '';
+      const nameKey = `name:${fileName.toLowerCase()}`;
+
+      if (idKey && seenById.has(idKey)) continue;
+      if (seenByName.has(nameKey)) continue;
+
+      const absolutePath = resolve(baseDir, fileName);
+      let mtimeMs = 0;
+      try {
+        mtimeMs = Number(statSync(absolutePath).mtimeMs || 0);
+      } catch {
+        // Keep default timestamp if metadata cannot be read.
+      }
+
+      if (idKey) seenById.add(idKey);
+      seenByName.add(nameKey);
+
+      files.push({
+        fileName,
+        videoId,
+        mtimeMs,
+      });
+    }
+  }
+
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  return files.map((item, index) => ({
+    id: item.videoId ? `sc-video-${item.videoId}` : `sc-video-${index + 1}`,
+    type: 'video',
+    title: buildTitleFromFileName(item.fileName),
+    source: `/api/dev/download/file/${encodeURIComponent(item.fileName)}`,
+    fileName: item.fileName,
+    videoId: item.videoId || null,
+  }));
+}
+
+function resolveExistingFilePath(baseDir, fileName) {
+  const requestedPath = resolve(baseDir, fileName);
+  const safeBase = `${baseDir}${sep}`;
+  const inBase = requestedPath === baseDir || requestedPath.startsWith(safeBase);
+
+  if (!inBase) {
+    return '';
+  }
+
+  if (existsSync(requestedPath)) {
+    try {
+      const stat = statSync(requestedPath);
+      if (stat.isFile()) {
+        return requestedPath;
+      }
+    } catch {
+      // Ignore and fall back to ID-based lookup.
+    }
+  }
+
+  const videoId = extractVideoIdFromName(fileName);
+  if (!videoId) {
+    return '';
+  }
+
+  try {
+    const entries = readdirSync(baseDir, { withFileTypes: true });
+    const idTag = `[${videoId}]`;
+    const fallback = entries.find((entry) => entry.isFile() && entry.name.includes(idTag));
+    return fallback ? resolve(baseDir, fallback.name) : '';
+  } catch {
+    return '';
+  }
+}
 
 /** Random integer between min and max (inclusive). */
 function randomBetween(min, max) {
@@ -104,6 +219,60 @@ async function runWorker() {
 export function registerDownloadRoutes(app) {
   // Reset any items that were mid-download when server last restarted
   resetStuckDownloading();
+
+  // GET /api/dev/download/file/:fileName
+  // Streams a downloaded file. If exact filename is not found, we also
+  // resolve by embedded YouTube ID token: "...[VIDEO_ID].mp4".
+  app.get('/api/dev/download/file/:fileName', (req, res) => {
+    const fileName = String(req.params.fileName || '').trim();
+    const downloadDirs = Array.from(new Set([
+      String(process.env.YT_DOWNLOAD_DIR || '').trim(),
+      String(process.env.SC_BEHIND_THE_SHIPS_DIR || DEFAULT_STAR_CITIZEN_VIDEO_DIR).trim(),
+    ].filter(Boolean)));
+
+    if (downloadDirs.length === 0) {
+      return res.status(400).json({ error: 'No media directory is configured in .env' });
+    }
+
+    if (!fileName) {
+      return res.status(400).json({ error: 'fileName is required' });
+    }
+
+    if (/[/\\]/.test(fileName) || fileName.includes('..')) {
+      return res.status(400).json({ error: 'Invalid fileName path' });
+    }
+
+    for (const dir of downloadDirs) {
+      const baseDir = resolve(dir);
+      const filePath = resolveExistingFilePath(baseDir, fileName);
+      if (!filePath) continue;
+
+      return res.sendFile(filePath);
+    }
+
+    return res.status(404).json({ error: 'File not found', fileName });
+  });
+
+  // GET /api/dev/download/library
+  // Returns a live playlist built from existing Star Citizen video files.
+  app.get('/api/dev/download/library', (_req, res) => {
+    const downloadDirs = Array.from(new Set([
+      String(process.env.YT_DOWNLOAD_DIR || '').trim(),
+      String(process.env.SC_BEHIND_THE_SHIPS_DIR || DEFAULT_STAR_CITIZEN_VIDEO_DIR).trim(),
+    ].filter(Boolean)));
+
+    if (downloadDirs.length === 0) {
+      return res.json({ items: [] });
+    }
+
+    try {
+      const items = buildStarCitizenPlaylistFromDirectories(downloadDirs);
+      return res.json({ items });
+    } catch (error) {
+      logger.warn(`library read error: ${error?.message || 'unknown error'}`);
+      return res.status(500).json({ error: 'Failed to read media library' });
+    }
+  });
 
   // GET /api/dev/download/status
   app.get('/api/dev/download/status', (_req, res) => {

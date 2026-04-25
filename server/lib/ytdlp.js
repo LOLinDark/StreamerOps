@@ -22,12 +22,11 @@ const logger = createLogger('ytdlp');
 const VALID_VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
 
 // yt-dlp format selector:
-// Prefer browser-friendly H.264/AVC video + M4A audio, merged to MP4.
-// This avoids many AV1/VP9 variants that fail in ffmpeg.wasm decode paths.
-// Falls back to generic MP4/best as a last resort when AVC streams are missing.
+// Enforce browser-friendly H.264/AVC (+ AAC/M4A when possible).
+// Intentionally does NOT fall back to AV1/VP9 to avoid downstream wasm decode failures.
 // This still covers 1920x824 cinema crops which fit within 1080p height.
 const FORMAT_SELECTOR =
-  'bestvideo[vcodec*=avc1][height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[vcodec*=avc1][height<=1080]+bestaudio[ext=m4a]/best[height<=1080][vcodec*=avc1][ext=mp4]/best[height<=1080][ext=mp4]/best[ext=mp4]/best';
+  'bestvideo[vcodec^=avc1][height<=1080][ext=mp4]+bestaudio[acodec^=mp4a][ext=m4a]/bestvideo[vcodec^=avc1][height<=1080]+bestaudio[acodec^=mp4a]/best[height<=1080][ext=mp4][vcodec^=avc1][acodec^=mp4a]/best[height<=1080][vcodec^=avc1][ext=mp4]/best[height<=1080][vcodec^=avc1]';
 
 const MERGE_FORMAT = 'mp4';
 
@@ -144,9 +143,13 @@ export function downloadVideo({ videoId, subDir = '', onProgress }) {
 
     logger.info(`Starting download: ${videoId}`);
     const proc = spawn(getYtDlpBin(), args, { shell: false });
+    let collectedOutput = '';
 
     function handleLine(data) {
       const line = data.toString().trim();
+      if (line) {
+        collectedOutput += `${line}\n`;
+      }
       if (line && onProgress) {
         onProgress(line);
       }
@@ -169,6 +172,15 @@ export function downloadVideo({ videoId, subDir = '', onProgress }) {
         resolve();
       } else {
         logger.warn(`yt-dlp exited ${code} for ${videoId}`);
+        const missingCompatibleFormat = /Requested format is not available/i.test(collectedOutput);
+        if (missingCompatibleFormat) {
+          reject(new Error(
+            'No browser-safe H.264/AVC format was available for this video. ' +
+            'Try another source or pre-transcode this clip before adding it to the sequence.'
+          ));
+          return;
+        }
+
         reject(new Error(`yt-dlp exited with code ${code}`));
       }
     });

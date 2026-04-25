@@ -1,10 +1,11 @@
 import { Container, Title, Card, Text, Stack, Badge, Group, Button, SimpleGrid } from '@mantine/core';
+import DevTag from '../components/DevTag';
 import { useNavigate } from 'react-router-dom';
 
 const tools = [
   {
-    label: 'Video Library',
-    desc: 'Download and queue Star Citizen videos from YouTube playlists. Build your local video catalogue for streaming.',
+    label: 'Followed Videos',
+    desc: 'Track official Star Citizen media plus followed YouTube and Twitch channels, then queue videos for streaming.',
     path: '/streamer/video-library',
     status: 'live',
   },
@@ -15,9 +16,33 @@ const tools = [
     status: 'live',
   },
   {
+    label: 'Playlist Manager',
+    desc: 'View saved sequences, check their media health, and reopen them in Sequence Builder.',
+    path: '/streamer/playlists',
+    status: 'live',
+  },
+  {
+    label: 'Scene Manager',
+    desc: 'Manage simple browser-stream scenes with title, trademark notice, corner logos, and sequence references.',
+    path: '/overlays/scene-manager',
+    status: 'live',
+  },
+  {
+    label: 'Browser Playout',
+    desc: 'Play scene collections in a browser window with transport controls and transitions for capture in OBS.',
+    path: '/overlays/playout',
+    status: 'live',
+  },
+  {
     label: 'Ship PNG Cutout',
     desc: 'Upload ship art, remove the background with Clipdrop, and download transparent PNG files.',
     path: '/streamer/background-removal',
+    status: 'live',
+  },
+  {
+    label: 'Sound Files',
+    desc: 'Manage audio files and background music for overlays and stream sequences. View file metadata and details.',
+    path: '/streamer/sound-files',
     status: 'live',
   },
   {
@@ -53,7 +78,7 @@ export default function StreamerPage() {
     <Container size="lg" py="md">
       <Stack gap="lg">
         <div>
-          <Title>📡 Streamer Control</Title>
+          <Title><DevTag tag="ST01" />📡 Streamer Control</Title>
           <Text c="dimmed" mt="xs">
             Tools for managing video playlists, OBS integration, and automated Star Citizen stream broadcasts.
           </Text>

@@ -49,6 +49,14 @@ const ALLOWED_ORIGINS = [
 ];
 const ANALYTICS_EVENT_NAME_PATTERN = /^[a-z0-9][a-z0-9._:-]{2,63}$/;
 const SENSITIVE_KEY_PATTERN = /(email|password|token|secret|phone|address|auth|apikey|api-key|key)/i;
+const OVERLAY_COMMAND_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/i;
+const OVERLAY_TARGET_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/i;
+const MAX_OVERLAY_EVENTS = 200;
+
+const overlayControlBus = {
+  seq: 0,
+  events: [],
+};
 
 // --- Rate limiting ---
 const DAILY_REQUEST_LIMIT = parseInt(process.env.MAX_DAILY_REQUESTS || '20');
@@ -347,9 +355,67 @@ app.get('/api/citizen/:handle', async (req, res) => {
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: 'Too many requests, please try again later.'
+  message: 'Too many requests, please try again later.',
+  // Keep operational dev download controls responsive even if analytics or other
+  // API traffic bursts trigger the shared limiter.
+  skip: (req) => {
+    const path = String(req.path || '');
+    const originalUrl = String(req.originalUrl || '');
+    return path.startsWith('/dev/download/')
+      || path.startsWith('/api/dev/download/')
+      || path.startsWith('/overlays/star-citizen/control')
+      || path.startsWith('/api/overlays/star-citizen/control')
+      || originalUrl.startsWith('/api/dev/download/')
+      || originalUrl.startsWith('/api/overlays/star-citizen/control');
+  },
 });
 app.use('/api/', limiter);
+
+// --- Star Citizen overlay command relay (cross-window/browser sync) ---
+app.post('/api/overlays/star-citizen/control', (req, res) => {
+  const command = String(req.body?.command || '').trim();
+  const target = String(req.body?.target || '').trim() || 'star-citizen-core-v1';
+  const commandId = String(req.body?.commandId || '').trim();
+  const senderId = String(req.body?.senderId || '').trim();
+  const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
+  const sentAt = String(req.body?.sentAt || '').trim();
+
+  if (!command || !OVERLAY_COMMAND_PATTERN.test(command)) {
+    return res.status(400).json({ error: 'Invalid command' });
+  }
+
+  if (!OVERLAY_TARGET_PATTERN.test(target) && target !== 'all') {
+    return res.status(400).json({ error: 'Invalid target' });
+  }
+
+  const event = {
+    seq: ++overlayControlBus.seq,
+    command,
+    target,
+    payload,
+    commandId: commandId.slice(0, 120) || null,
+    senderId: senderId.slice(0, 120) || null,
+    sentAt: sentAt.slice(0, 64) || null,
+    receivedAt: new Date().toISOString(),
+  };
+
+  overlayControlBus.events.push(event);
+  if (overlayControlBus.events.length > MAX_OVERLAY_EVENTS) {
+    overlayControlBus.events.splice(0, overlayControlBus.events.length - MAX_OVERLAY_EVENTS);
+  }
+
+  return res.json({ success: true, seq: event.seq });
+});
+
+app.get('/api/overlays/star-citizen/control', (req, res) => {
+  const after = Math.max(0, Number.parseInt(String(req.query.after || '0'), 10) || 0);
+  const events = overlayControlBus.events.filter((event) => event.seq > after).slice(-50);
+  res.set('Cache-Control', 'no-store');
+  return res.json({
+    latestSeq: overlayControlBus.seq,
+    events,
+  });
+});
 
 // --- RSI Starmap proxy (public endpoint with server-side cache) ---
 const RSI_STARMAP_BASE = 'https://robertsspaceindustries.com/api/starmap';

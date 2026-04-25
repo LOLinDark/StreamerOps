@@ -74,6 +74,24 @@ Create one route that lists all entries from index with:
 
 This gives one place to browse all help content.
 
+### 4) Periodic Loading-Style Tips
+
+Add a reusable runtime helper for rotating operational tips like game loading screens.
+
+Recommended pieces:
+- `getHelpTips(tipSetKey)` for retrieving short tip arrays by feature context
+- `useRotatingTips(tips, intervalMs)` for timed tip rotation
+
+Usage examples:
+- Playout windows: show low-profile tips for fullscreen keys, stage mode, and recovery actions
+- Remote control pages: show operational tips for presets, close guard, and lock mode
+
+Rules:
+- Keep each tip short (single sentence) for glance readability
+- Prefer action-oriented wording ("Press F to fullscreen")
+- Scope tips by feature (`overlaysPlayout`, `overlaysRemote`, etc.)
+- Rotate every 8 to 12 seconds unless UX requires faster cadence
+
 ---
 
 ## Governance Rules

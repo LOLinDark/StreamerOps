@@ -132,6 +132,12 @@ export const routeConfig = {
 
   testPages: [
     {
+      label: '[DEV09] /developer/testing',
+      path: '/developer/testing',
+      category: 'Test Pages',
+      color: 'teal',
+    },
+    {
       label: '[DEV03] /developer/api-test',
       path: '/developer/api-test',
       category: 'Test Pages',
@@ -162,7 +168,7 @@ export const routeConfig = {
       color: 'teal',
     },
     {
-      label: '[DEV08] /developer/video-catalog',
+      label: '[DEV08] /developer/video-catalog (Followed YouTube/Twitch)',
       path: '/developer/video-catalog',
       category: 'Test Pages',
       color: 'teal',
@@ -177,10 +183,61 @@ export const routeConfig = {
       color: 'violet',
     },
     {
-      label: '[ST01] /streamer/video-library',
+      label: '[ST01] /streamer/video-library (Followed Videos)',
       path: '/streamer/video-library',
       category: 'Streamer',
       color: 'violet',
+    },
+    {
+      label: '[ST02] /streamer/scene-manager',
+      path: '/streamer/scene-manager',
+      category: 'Streamer',
+      color: 'violet',
+    },
+    {
+      label: '[ST03] /streamer/playout',
+      path: '/streamer/playout',
+      category: 'Streamer',
+      color: 'violet',
+    },
+  ],
+
+  overlays: [
+    {
+      label: '/overlays',
+      path: '/overlays',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV01] /overlays/scene-manager',
+      path: '/overlays/scene-manager',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV02] /overlays/playout',
+      path: '/overlays/playout',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV03] /overlays/window/star-citizen-playout',
+      path: '/overlays/window/star-citizen-playout',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV04] /overlays/window/star-citizen-remote-control',
+      path: '/overlays/window/star-citizen-remote-control',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV05] /overlays/star-citizen-control (Quick Controls)',
+      path: '/overlays/star-citizen-control',
+      category: 'Overlays Studio',
+      color: 'pink',
     },
   ],
 };
@@ -198,7 +255,14 @@ export const getAllRoutesByCategory = () => {
  * @returns {Array} All routes in a single array
  */
 export const getAllRoutes = () => {
-  return [...routeConfig.main, ...routeConfig.themeLab, ...routeConfig.admin, ...routeConfig.testPages];
+  return [
+    ...routeConfig.main,
+    ...routeConfig.themeLab,
+    ...routeConfig.admin,
+    ...routeConfig.testPages,
+    ...routeConfig.streamer,
+    ...routeConfig.overlays,
+  ];
 };
 
 /**

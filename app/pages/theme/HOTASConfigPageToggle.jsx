@@ -18,6 +18,7 @@ import { HOTASTable } from '../../components/HOTASTable';
 import { StateIndicator } from '../../components/StateIndicator';
 import { useHOTASFiltering } from '../../hooks/useHOTASFiltering';
 import { shipControlsCategories } from '../../data/starcitizen-keybindings';
+import DevTag from '../../components/DevTag';
 
 export default function HOTASConfigPageToggle() {
   const [selectedProfile, setSelectedProfile] = useState('');
@@ -159,7 +160,7 @@ export default function HOTASConfigPageToggle() {
                   textShadow: theme === 'dark' ? `0 0 10px rgba(0, 255, 136, 0.5)` : 'none',
                 }}
               >
-                [HC04] HOTAS Configuration
+                <DevTag tag="HC04" />HOTAS Configuration
               </Text>
               <Text
                 size="sm"

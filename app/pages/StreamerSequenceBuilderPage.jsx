@@ -21,9 +21,18 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconArrowDown, IconArrowUp, IconDownload, IconEye, IconEyeOff, IconFolder, IconPlayerPlay, IconPlus, IconTrash } from '@tabler/icons-react';
+import {
+  SCENE_IMPORT_QUEUE_KEY,
+  buildSceneCollectionDocument,
+  buildSceneCollectionFromSequence,
+} from '../streamer/sceneModel';
+import {
+  consumeOpenSavedSequenceId,
+  SEQUENCE_DRAFT_KEY,
+  SEQUENCE_LIBRARY_KEY,
+} from '../streamer/sequenceLibrary';
+import DevTag from '../components/DevTag';
 
-const SEQUENCE_LIBRARY_KEY = 'streamerops.sequenceLibrary.v1';
-const SEQUENCE_DRAFT_KEY = 'streamerops.sequenceDraft.v1';
 const METHOD_VISIBILITY_KEY = 'streamerops.sequenceMethodVisibility.v1';
 const BROWSER_FFMPEG_LOAD_TIMEOUT_MS = 45000;
 const FFMPEG_CLASS_WORKER_URL = '/vendor/ffmpeg/ffmpeg-worker.js';
@@ -131,6 +140,7 @@ function normalizeMethodVisibility(input, fallback = {
   addImage: true,
   addVideo: true,
   quickPair: true,
+  bulkVideos: true,
   bulkMatch: true,
 }) {
   const source = input && typeof input === 'object' ? input : {};
@@ -138,6 +148,7 @@ function normalizeMethodVisibility(input, fallback = {
     addImage: toStrictBoolean(source.addImage, fallback.addImage),
     addVideo: toStrictBoolean(source.addVideo, fallback.addVideo),
     quickPair: toStrictBoolean(source.quickPair, fallback.quickPair),
+    bulkVideos: toStrictBoolean(source.bulkVideos, fallback.bulkVideos),
     bulkMatch: toStrictBoolean(source.bulkMatch, fallback.bulkMatch),
   };
 }
@@ -416,6 +427,7 @@ export default function StreamerSequenceBuilderPage() {
       addImage: true,
       addVideo: true,
       quickPair: true,
+      bulkVideos: true,
       bulkMatch: true,
     };
 
@@ -706,6 +718,30 @@ export default function StreamerSequenceBuilderPage() {
     }
   }
 
+  function addVideosFromDirectory() {
+    if (bulkVideoFiles.length === 0) return;
+
+    const additions = [...bulkVideoFiles]
+      .sort((a, b) => String(a.webkitRelativePath || a.name).localeCompare(String(b.webkitRelativePath || b.name)))
+      .map((videoFile) => {
+        const restoredEntry = restoredVideoEntries.find((entry) => entry.file === videoFile);
+        const source = videoFile.webkitRelativePath || restoredEntry?.path || videoFile.name;
+
+        return {
+          id: createId(),
+          type: 'video',
+          title: titleFromStem(videoFile.name),
+          source,
+          previewUrl: canMakePreview(videoFile) ? makeBlobUrl(videoFile) : undefined,
+          durationSec: 0,
+        };
+      });
+
+    if (additions.length > 0) {
+      setSequence((prev) => [...prev, ...additions]);
+    }
+  }
+
   function moveItem(index, direction) {
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= sequence.length) return;
@@ -822,16 +858,29 @@ export default function StreamerSequenceBuilderPage() {
   }
 
   useEffect(() => {
+    let loadedRequestedSequence = false;
+
     try {
+      const requestedSequenceId = consumeOpenSavedSequenceId();
       const rawLibrary = localStorage.getItem(SEQUENCE_LIBRARY_KEY);
       if (rawLibrary) {
         const parsed = JSON.parse(rawLibrary);
         if (Array.isArray(parsed)) {
           setSavedSequences(parsed);
+
+          if (requestedSequenceId) {
+            const requested = parsed.find((item) => item.id === requestedSequenceId);
+            if (requested) {
+              loadedRequestedSequence = true;
+              setSelectedSequenceId(requested.id);
+              setSequenceName(requested.name || 'Untitled Sequence');
+              setSequence(Array.isArray(requested.sequence) ? requested.sequence : []);
+            }
+          }
         }
       }
 
-      const rawDraft = localStorage.getItem(SEQUENCE_DRAFT_KEY);
+      const rawDraft = loadedRequestedSequence ? null : localStorage.getItem(SEQUENCE_DRAFT_KEY);
       if (rawDraft) {
         const parsedDraft = JSON.parse(rawDraft);
         if (parsedDraft && Array.isArray(parsedDraft.sequence)) {
@@ -1374,6 +1423,25 @@ export default function StreamerSequenceBuilderPage() {
     addMatchesFromDirectories();
   }
 
+  function sendSequenceToSceneManager() {
+    try {
+      const sceneState = buildSceneCollectionFromSequence({
+        sequence: exportSequence,
+        sequenceName,
+      });
+
+      const doc = buildSceneCollectionDocument(sceneState, {
+        source: 'sequence-builder',
+        sourceName: sequenceName,
+      });
+
+      localStorage.setItem(SCENE_IMPORT_QUEUE_KEY, JSON.stringify(doc));
+      window.open('/streamer/scene-manager?import=latest', '_blank', 'noopener');
+    } catch {
+      // Swallow localStorage/serialization failures to keep export UI responsive.
+    }
+  }
+
   // Build exports stripping browser-only blob URLs from the plan output
   const exportSequence = useMemo(
     () =>
@@ -1520,7 +1588,7 @@ export default function StreamerSequenceBuilderPage() {
 
       <Stack gap="lg">
         <div>
-          <Title order={2}>Sequence Builder</Title>
+          <Title order={2}><DevTag tag="ST04" />Sequence Builder</Title>
           <Text c="dimmed" mt="xs">
             Assemble ship PNG transitions and videos into a sequence. Use the file picker for browser preview, or type a path for export scripts.
           </Text>
@@ -1583,6 +1651,11 @@ export default function StreamerSequenceBuilderPage() {
                 label="Show Quick Pair"
                 checked={methodVisibility.quickPair}
                 onChange={(e) => setMethodVisibility((prev) => ({ ...prev, quickPair: e.currentTarget.checked }))}
+              />
+              <Checkbox
+                label="Show Video Folder Import"
+                checked={methodVisibility.bulkVideos}
+                onChange={(e) => setMethodVisibility((prev) => ({ ...prev, bulkVideos: e.currentTarget.checked }))}
               />
               <Checkbox
                 label="Show Bulk Match Import"
@@ -1758,6 +1831,45 @@ export default function StreamerSequenceBuilderPage() {
         </Card>
         )}
 
+        {/* Bulk videos only */}
+        {methodVisibility.bulkVideos && (
+        <Card withBorder p="md" style={{ borderColor: 'rgba(98, 183, 255, 0.35)' }}>
+          <Text fw={700} mb="sm">Video Folder Import</Text>
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              Pick one video folder and add every video in it to the sequence as a simple videos-only playlist.
+            </Text>
+            <Group align="flex-end" wrap="wrap">
+              <Button variant="light" leftSection={<IconFolder size={16} />} onClick={() => bulkVideoDirRef.current?.click()}>
+                Choose Video Directory
+              </Button>
+              {supportsDirectoryHandles && (
+                <Button variant="subtle" onClick={() => chooseAndRememberDirectory('video')}>
+                  Connect + Remember Videos Folder
+                </Button>
+              )}
+              <Badge variant="light" color="green">Videos: {bulkVideoFiles.length}</Badge>
+            </Group>
+            {restoreHandlesMessage && (
+              <Text size="xs" c="dimmed">{restoreHandlesMessage}</Text>
+            )}
+            <Group>
+              <Button
+                color="blue"
+                leftSection={<IconPlus size={16} />}
+                onClick={addVideosFromDirectory}
+                disabled={bulkVideoFiles.length === 0}
+              >
+                Add All Videos To Sequence
+              </Button>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Uses filenames as titles and keeps remembered-folder paths when available so the sequence can be reconnected later.
+            </Text>
+          </Stack>
+        </Card>
+        )}
+
         {/* Bulk folder matcher */}
         {methodVisibility.bulkMatch && (
         <Card withBorder p="md" style={{ borderColor: 'rgba(0, 189, 214, 0.35)' }}>
@@ -1905,45 +2017,87 @@ export default function StreamerSequenceBuilderPage() {
             </Table.Tbody>
           </Table>
 
-          <Group justify="space-between" mt="md" wrap="wrap">
-            <Group gap="xs" wrap="wrap">
-              <Button
-                color="blue"
-                leftSection={<IconPlayerPlay size={16} />}
-                onClick={renderInBrowserWithWasm}
-                loading={browserRenderRunning || browserWasmLoading}
-                disabled={sequence.length === 0}
-              >
-                Render In Browser
-              </Button>
-              <Button
-                variant="light"
-                onClick={runBrowserCompatibilityPrecheck}
-                loading={browserPrecheckRunning}
-                disabled={sequence.length === 0 || browserRenderRunning}
-              >
-                Run Compatibility Precheck
-              </Button>
-              <Button
-                variant="light"
-                leftSection={<IconDownload size={16} />}
-                onClick={downloadBrowserRender}
-                disabled={!browserOutputUrl}
-              >
-                Download MP4
-              </Button>
-              {browserWasmReady && <Badge variant="light" color="cyan">FFmpeg WASM loaded</Badge>}
-            </Group>
+          <Card withBorder mt="md" p="md" style={{ borderColor: 'rgba(76, 201, 240, 0.35)' }}>
+            <Stack gap="md">
+              <Group justify="space-between" wrap="wrap">
+                <div>
+                  <Title order={5}>Browser Render Tools</Title>
+                  <Text size="sm" c="dimmed">
+                    Use these controls when you want StreamerOps to render your sequence directly in the browser.
+                  </Text>
+                </div>
+                <Group gap="xs" wrap="wrap">
+                  {browserWasmReady ? (
+                    <Badge variant="light" color="cyan">FFmpeg WASM loaded</Badge>
+                  ) : (
+                    <Badge variant="light" color="gray">FFmpeg WASM not loaded</Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    color="gray"
+                    onClick={rerunBulkMatchImport}
+                    disabled={bulkImageFiles.length === 0 || bulkVideoFiles.length === 0}
+                  >
+                    Re-run Bulk Match Import
+                  </Button>
+                </Group>
+              </Group>
 
-            <Button
-              variant="outline"
-              color="gray"
-              onClick={rerunBulkMatchImport}
-              disabled={bulkImageFiles.length === 0 || bulkVideoFiles.length === 0}
-            >
-              Re-run Bulk Match Import
-            </Button>
-          </Group>
+              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+                <Card withBorder p="sm">
+                  <Stack gap="xs">
+                    <Text fw={600} size="sm">1) Render In Browser</Text>
+                    <Text size="xs" c="dimmed">
+                      Builds one MP4 from your current sequence using in-browser FFmpeg WASM.
+                    </Text>
+                    <Button
+                      color="blue"
+                      leftSection={<IconPlayerPlay size={16} />}
+                      onClick={renderInBrowserWithWasm}
+                      loading={browserRenderRunning || browserWasmLoading}
+                      disabled={sequence.length === 0}
+                    >
+                      Render In Browser
+                    </Button>
+                  </Stack>
+                </Card>
+
+                <Card withBorder p="sm">
+                  <Stack gap="xs">
+                    <Text fw={600} size="sm">2) Compatibility Precheck</Text>
+                    <Text size="xs" c="dimmed">
+                      Tests each sequence item first so you can catch media/codec problems before rendering.
+                    </Text>
+                    <Button
+                      variant="light"
+                      onClick={runBrowserCompatibilityPrecheck}
+                      loading={browserPrecheckRunning}
+                      disabled={sequence.length === 0 || browserRenderRunning}
+                    >
+                      Run Compatibility Precheck
+                    </Button>
+                  </Stack>
+                </Card>
+
+                <Card withBorder p="sm">
+                  <Stack gap="xs">
+                    <Text fw={600} size="sm">3) Download MP4</Text>
+                    <Text size="xs" c="dimmed">
+                      Saves the latest completed browser render output to your machine.
+                    </Text>
+                    <Button
+                      variant="light"
+                      leftSection={<IconDownload size={16} />}
+                      onClick={downloadBrowserRender}
+                      disabled={!browserOutputUrl}
+                    >
+                      Download MP4
+                    </Button>
+                  </Stack>
+                </Card>
+              </SimpleGrid>
+            </Stack>
+          </Card>
 
           {browserRenderMessage !== 'Idle' && (
             <Text size="xs" c="dimmed" mt="xs">Status: {browserRenderMessage}</Text>
@@ -2020,69 +2174,106 @@ export default function StreamerSequenceBuilderPage() {
           <Stack gap="md">
             <Group justify="space-between">
               <Title order={4}>Alternative Exports</Title>
-              <Text size="sm" c="dimmed">Preview blob URLs are stripped from export outputs — only file paths and http URLs are included.</Text>
+              <Text size="sm" c="dimmed">Pick an export based on your target workflow. Preview blob URLs are stripped from outputs.</Text>
             </Group>
             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-              <Stack gap="md">
-                <Group gap="sm" wrap="wrap">
+              <Card withBorder p="sm">
+                <Stack gap="sm">
+                  <Text fw={700}>Plan JSON</Text>
+                  <Text size="xs" c="dimmed">
+                    Best for automation and data interchange. Includes sequence order and durations in JSON format.
+                  </Text>
                   <Button onClick={() => downloadTextFile(planJson, 'streamerops-sequence-plan.json', 'application/json')}>
                     Download Plan JSON
                   </Button>
-                  <Button variant="light" onClick={() => downloadTextFile(vlcXspf, 'streamerops-videos-only.xspf', 'application/xspf+xml')}>
-                    Download VLC Playlist (Videos)
-                  </Button>
-                  <Button variant="light" color="violet" onClick={() => downloadTextFile(ffconcatScript, 'streamerops-image-video.ffconcat', 'text/plain')}>
-                    Download FFconcat (Images + Videos)
-                  </Button>
-                </Group>
-                <Textarea label="Plan JSON" value={planJson} minRows={6} autosize readOnly />
-                <Textarea label="VLC XSPF (videos only)" value={vlcXspf} minRows={5} autosize readOnly />
-                <Textarea label="FFconcat (images + videos)" value={ffconcatScript} minRows={5} autosize readOnly />
-              </Stack>
+                  <Textarea label="Plan JSON Preview" value={planJson} minRows={6} autosize readOnly />
+                </Stack>
+              </Card>
 
-              <Card withBorder p="sm" style={{ borderColor: 'rgba(176, 0, 255, 0.35)' }}>
+              <Card withBorder p="sm">
                 <Stack gap="sm">
-                  <Title order={5}>FFmpeg Helper</Title>
-                  <Text size="sm" c="dimmed">
-                    Use native FFmpeg for best stability, or use the Render In Browser button above the sequence table.
-                  </Text>
-
-                  {ffmpegStatus.loading ? (
-                    <Badge variant="light" color="gray">Checking FFmpeg status...</Badge>
-                  ) : ffmpegStatus.installed ? (
-                    <Badge variant="light" color="teal">FFmpeg detected ({ffmpegStatus.source})</Badge>
-                  ) : (
-                    <Badge variant="light" color="orange">FFmpeg not detected</Badge>
-                  )}
-
-                  {ffmpegStatus.path && (
-                    <Text size="xs" c="dimmed" style={{ wordBreak: 'break-all' }}>
-                      Path: {ffmpegStatus.path}
-                    </Text>
-                  )}
-
-                  <Text size="sm" fw={600}>Quick guidance</Text>
-                  <Text size="xs" c="dimmed">1. Native: export FFconcat and render with system FFmpeg.</Text>
-                  <Text size="xs" c="dimmed">2. Browser: build your sequence above, then click Render In Browser.</Text>
-                  <Text size="xs" c="dimmed">3. For long edits, split into smaller compilations to reduce memory pressure.</Text>
-
-                  <Button
-                    component="a"
-                    href="https://ffmpeg.org/download.html"
-                    target="_blank"
-                    rel="noreferrer"
-                    variant="light"
-                    color="violet"
-                  >
-                    Download FFmpeg
-                  </Button>
-
+                  <Text fw={700}>Scene Manager Handoff</Text>
                   <Text size="xs" c="dimmed">
-                    OBS supports scripted scene/source automation, but reliable timeline-style media rendering is still better handled by FFmpeg-style processing.
+                    Sends this sequence to Scene Manager so you can build browser playout scenes and transitions.
+                  </Text>
+                  <Button variant="light" color="blue" onClick={sendSequenceToSceneManager}>
+                    Send To Scene Manager
+                  </Button>
+                  <Text size="xs" c="dimmed">
+                    Use this when your next step is in-browser scene playback rather than direct video file rendering.
                   </Text>
                 </Stack>
               </Card>
+
+              <Card withBorder p="sm">
+                <Stack gap="sm">
+                  <Text fw={700}>VLC XSPF (Videos Only)</Text>
+                  <Text size="xs" c="dimmed">
+                    Exports only video clips as an XSPF playlist for VLC playback workflows.
+                  </Text>
+                  <Button variant="light" onClick={() => downloadTextFile(vlcXspf, 'streamerops-videos-only.xspf', 'application/xspf+xml')}>
+                    Download VLC Playlist (Videos)
+                  </Button>
+                  <Textarea label="VLC XSPF Preview" value={vlcXspf} minRows={5} autosize readOnly />
+                </Stack>
+              </Card>
+
+              <Card withBorder p="sm">
+                <Stack gap="sm">
+                  <Text fw={700}>FFconcat (Images + Videos)</Text>
+                  <Text size="xs" c="dimmed">
+                    Best for native FFmpeg renders. Keeps image durations and video order for timeline-style output.
+                  </Text>
+                  <Button variant="light" color="violet" onClick={() => downloadTextFile(ffconcatScript, 'streamerops-image-video.ffconcat', 'text/plain')}>
+                    Download FFconcat (Images + Videos)
+                  </Button>
+                  <Textarea label="FFconcat Preview" value={ffconcatScript} minRows={5} autosize readOnly />
+                </Stack>
+              </Card>
             </SimpleGrid>
+
+            <Card withBorder p="sm" style={{ borderColor: 'rgba(176, 0, 255, 0.35)' }}>
+              <Stack gap="sm">
+                <Title order={5}>FFmpeg Helper</Title>
+                <Text size="sm" c="dimmed">
+                  Use native FFmpeg for best stability, or use Browser Render Tools above for in-browser output.
+                </Text>
+
+                {ffmpegStatus.loading ? (
+                  <Badge variant="light" color="gray">Checking FFmpeg status...</Badge>
+                ) : ffmpegStatus.installed ? (
+                  <Badge variant="light" color="teal">FFmpeg detected ({ffmpegStatus.source})</Badge>
+                ) : (
+                  <Badge variant="light" color="orange">FFmpeg not detected</Badge>
+                )}
+
+                {ffmpegStatus.path && (
+                  <Text size="xs" c="dimmed" style={{ wordBreak: 'break-all' }}>
+                    Path: {ffmpegStatus.path}
+                  </Text>
+                )}
+
+                <Text size="sm" fw={600}>Quick guidance</Text>
+                <Text size="xs" c="dimmed">1. Native timeline render: use FFconcat export and run it with system FFmpeg.</Text>
+                <Text size="xs" c="dimmed">2. Browser output file: use Browser Render Tools and then Download MP4.</Text>
+                <Text size="xs" c="dimmed">3. Scene playout workflow: use Send To Scene Manager.</Text>
+
+                <Button
+                  component="a"
+                  href="https://ffmpeg.org/download.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="light"
+                  color="violet"
+                >
+                  Download FFmpeg
+                </Button>
+
+                <Text size="xs" c="dimmed">
+                  OBS supports scripted scene/source automation, but reliable timeline-style media rendering is still better handled by FFmpeg-style processing.
+                </Text>
+              </Stack>
+            </Card>
           </Stack>
         </Card>
       </Stack>

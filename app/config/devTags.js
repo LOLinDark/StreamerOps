@@ -24,6 +24,7 @@ const devTags = {
   DEV04:     { label: 'Error Log',               path: '/developer/errors',      file: 'pages/ErrorLogPage.jsx' },
   DEV05:     { label: 'Changes',                 path: '/developer/changes',     file: 'pages/ChangesPage.jsx' },
   DEV06:     { label: 'Nav Charts Lab',          path: '/developer/nav-charts-lab', file: 'pages/DeveloperNavChartsLabPage.jsx' },
+  DEV09:     { label: 'Developer Testing',       path: '/developer/testing',      file: 'pages/DeveloperTestingPage.jsx' },
 
   // ── Admin & Tools ─────────────────────────────
   ADM01:     { label: 'Settings',                path: '/settings',              file: 'pages/SettingsPage.jsx' },
@@ -57,6 +58,19 @@ const devTags = {
   HC05:      { label: 'HOTAS Main',              path: '/hotas-config',               file: 'pages/HOTASConfigMainPage.jsx' },
   'HC-TEST': { label: 'HOTAS Input Test Lab',    path: '/settings/hotas',             file: 'pages/settings/HOTASTestPage.jsx' },
   TL01:      { label: 'Theme Lab Landing',       path: '/theme',                      file: 'pages/ThemePage.jsx' },
+
+  // ── Streamer Tools ────────────────────────────
+  ST01:      { label: 'Streamer Control',        path: '/streamer',                   file: 'pages/StreamerPage.jsx' },
+  ST02:      { label: 'Playlist Manager',        path: '/streamer/playlists',         file: 'pages/StreamerPlaylistManagerPage.jsx' },
+  ST03:      { label: 'Scene Manager',           path: '/streamer/scenes',            file: 'pages/StreamerSceneManagerPage.jsx' },
+  ST04:      { label: 'Sequence Builder',        path: '/streamer/sequence-builder',  file: 'pages/StreamerSequenceBuilderPage.jsx' },
+  ST05:      { label: 'Sound Files',             path: '/streamer/sounds',            file: 'pages/StreamerSoundFilesPage.jsx' },
+  ST06:      { label: 'Ship PNG Cutout',         path: '/streamer/bg-removal',        file: 'pages/StreamerBackgroundRemovalPage.jsx' },
+  ST07:      { label: 'Screenshots',             path: '/screenshots',                file: 'pages/ScreenshotsPage.jsx' },
+
+  // ── Overlays ──────────────────────────────────
+  OV01:      { label: 'Overlays Studio',         path: '/overlays',                   file: 'pages/OverlaysStudioPage.jsx' },
+  OV02:      { label: 'SC Quick Controls',       path: '/overlays/sc-control',        file: 'pages/OverlaysStarCitizenControlPage.jsx' },
 };
 
 export default devTags;

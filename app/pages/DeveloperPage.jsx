@@ -6,6 +6,7 @@ export default function DeveloperPage() {
   const navigate = useNavigate();
 
   const adminTools = [
+    { label: 'Testing', desc: 'Minimal Star Citizen video playback test page', path: '/developer/testing' },
     { label: 'API Test', desc: 'Test Citizen, Gemini, and Rate Limit APIs', path: '/developer/api-test' },
     { label: 'Nav Charts Lab', desc: 'Dual-reality blend slider and command briefing mockup', path: '/developer/nav-charts-lab' },
     { label: 'Developer Context', desc: 'View all page contexts and tasks', path: '/developer/context' },

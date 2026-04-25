@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle, IconDownload, IconPhoto, IconSparkles, IconWand } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
+import DevTag from '../components/DevTag';
 
 const API_KEY_STORAGE = 'streamerops.clipdropApiKey';
 
@@ -159,7 +160,7 @@ export default function StreamerBackgroundRemovalPage() {
     <Container size="lg" py="md">
       <Stack gap="lg">
         <div>
-          <Title order={2}>Ship PNG Cutout</Title>
+          <Title order={2}><DevTag tag="ST06" />Ship PNG Cutout</Title>
           <Text c="dimmed" mt="xs">
             Remove image backgrounds using Clipdrop. You get 100 free development credits, then you need paid credits.
           </Text>

@@ -1,5 +1,6 @@
 import { Container, Title, Text, Box, Stack } from '@mantine/core';
 import ScreenshotsGallery from '../components/ScreenshotsGallery';
+import DevTag from '../components/DevTag';
 
 export default function ScreenshotsPage() {
   // Screenshots array - update this as you add images to public/screenshots/
@@ -65,7 +66,7 @@ export default function ScreenshotsPage() {
       <Stack gap="lg">
         <Box>
           <Title order={1} mb="sm">
-            OmniCore Screenshots
+            <DevTag tag="ST07" />OmniCore Screenshots
           </Title>
           <Text c="dimmed">
             Explore the features and interface of OmniCore

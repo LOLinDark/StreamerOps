@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AdminLayout from './components/LayoutNew';
 import StreamerLayout from './components/StreamerLayout';
+import OverlaysLayout from './components/OverlaysLayout';
 import MainLayout from './components/MainLayout';
 import DevPanel from './components/DevPanel';
 import InDevelopmentBanner from './components/InDevelopmentBanner';
@@ -39,9 +40,18 @@ const APITestPage = lazy(() => import('./pages/APITestPage'));
 const DeveloperContextIndexPage = lazy(() => import('./pages/DeveloperContextIndexPage'));
 const DeveloperNavChartsLabPage = lazy(() => import('./pages/DeveloperNavChartsLabPage'));
 const DeveloperVideoCatalogPage = lazy(() => import('./pages/DeveloperVideoCatalogPage'));
+const DeveloperTestingPage = lazy(() => import('./pages/DeveloperTestingPage'));
 const StreamerPage = lazy(() => import('./pages/StreamerPage'));
 const StreamerSequenceBuilderPage = lazy(() => import('./pages/StreamerSequenceBuilderPage'));
+const StreamerPlaylistManagerPage = lazy(() => import('./pages/StreamerPlaylistManagerPage'));
+const StreamerSceneManagerPage = lazy(() => import('./pages/StreamerSceneManagerPage'));
 const StreamerBackgroundRemovalPage = lazy(() => import('./pages/StreamerBackgroundRemovalPage'));
+const StreamerSoundFilesPage = lazy(() => import('./pages/StreamerSoundFilesPage'));
+const OverlaysStudioPage = lazy(() => import('./pages/OverlaysStudioPage'));
+const OverlayBrowserPlayoutPage = lazy(() => import('./pages/OverlayBrowserPlayoutPage'));
+const OverlaysStarCitizenQuickPlayoutPage = lazy(() => import('./pages/OverlaysStarCitizenQuickPlayoutPage'));
+const OverlaysStarCitizenRemoteControlPage = lazy(() => import('./pages/OverlaysStarCitizenRemoteControlPage'));
+const OverlaysStarCitizenControlPage = lazy(() => import('./pages/OverlaysStarCitizenControlPage'));
 
 // Theme Lab Pages
 const WelcomeOnline = lazy(() => import('./pages/theme/WelcomeOnline'));
@@ -78,16 +88,18 @@ function RuntimeObservers() {
 }
 
 function App() {
+  const location = useLocation();
   const welcomeCompleted = useAppStore((s) => s.welcomeCompleted);
   const completeWelcome = useAppStore((s) => s.completeWelcome);
+  const isStreamPlayoutWindow = location.pathname === '/overlays/window/star-citizen-playout';
 
   console.log('[OmniCore] App.jsx rendering, welcomeCompleted:', welcomeCompleted);
 
   return (
     <>
-      <NetworkStatusBadge />
-      <DevPanel />
-      <InDevelopmentBanner />
+      {!isStreamPlayoutWindow && <NetworkStatusBadge />}
+      {!isStreamPlayoutWindow && <DevPanel />}
+      {!isStreamPlayoutWindow && <InDevelopmentBanner />}
       <RuntimeObservers />
       <Routes>
         {/* Theme Lab Routes - Public, no auth required */}
@@ -102,6 +114,10 @@ function App() {
 
         {/* Login Route */}
         <Route path="/login" element={<RSILoginPage onComplete={() => { completeWelcome(); window.location.href = '/'; }} />} />
+
+        {/* Dedicated clean window playout route (no app shell) */}
+        <Route path="/overlays/window/star-citizen-playout" element={<Lazy Component={OverlaysStarCitizenQuickPlayoutPage} />} />
+        <Route path="/overlays/window/star-citizen-remote-control" element={<Lazy Component={OverlaysStarCitizenRemoteControlPage} />} />
         
         {/* Main User-Facing Dashboard & Feature Pages (with MainLayout) */}
         <Route element={<MainLayout />}>
@@ -137,6 +153,7 @@ function App() {
           <Route path="developer/changes" element={<Lazy Component={ChangesPage} />} />
           <Route path="developer/api-test" element={<Lazy Component={APITestPage} />} />
           <Route path="developer/nav-charts-lab" element={<Lazy Component={DeveloperNavChartsLabPage} />} />
+          <Route path="developer/testing" element={<Lazy Component={DeveloperTestingPage} />} />
           <Route path="developer/hotas-modes-lab" element={<HOTASConfigModesLabPage />} />
           <Route path="developer/hotas-profile-matrix-lab" element={<DeveloperHotasProfileMatrixLabPage />} />
           <Route path="developer/hotas-profile-matrix" element={<DeveloperHotasProfileMatrixLabPage />} />
@@ -148,8 +165,22 @@ function App() {
         <Route element={<StreamerLayout />}>
           <Route path="streamer" element={<Lazy Component={StreamerPage} />} />
           <Route path="streamer/video-library" element={<Lazy Component={DeveloperVideoCatalogPage} />} />
+          <Route path="streamer/playlists" element={<Lazy Component={StreamerPlaylistManagerPage} />} />
+          <Route path="streamer/scene-manager" element={<Lazy Component={StreamerSceneManagerPage} />} />
           <Route path="streamer/sequence-builder" element={<Lazy Component={StreamerSequenceBuilderPage} />} />
+          <Route path="streamer/playout" element={<Lazy Component={OverlayBrowserPlayoutPage} />} />
           <Route path="streamer/background-removal" element={<Lazy Component={StreamerBackgroundRemovalPage} />} />
+          <Route path="streamer/sound-files" element={<Lazy Component={StreamerSoundFilesPage} />} />
+        </Route>
+
+        {/* Overlays Studio Area (new primary section) */}
+        <Route element={<OverlaysLayout />}>
+          <Route path="overlays" element={<Lazy Component={OverlaysStudioPage} />} />
+          <Route path="overlays/scene-manager" element={<Lazy Component={StreamerSceneManagerPage} />} />
+          <Route path="overlays/playout" element={<Lazy Component={OverlayBrowserPlayoutPage} />} />
+          <Route path="overlays/star-citizen-playout" element={<Navigate to="/overlays/window/star-citizen-playout" replace />} />
+          <Route path="overlays/star-citizen-remote-control" element={<Navigate to="/overlays/window/star-citizen-remote-control" replace />} />
+          <Route path="overlays/star-citizen-control" element={<Lazy Component={OverlaysStarCitizenControlPage} />} />
         </Route>
 
         {/* Fallback: Always allow access, guard at component level if needed */}

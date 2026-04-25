@@ -25,6 +25,7 @@ import {
   IconSearch,
   IconX,
   IconDownload,
+  IconPlus,
   IconPlayerPlay,
   IconPlayerStop,
   IconRefresh,
@@ -35,6 +36,8 @@ import {
 import DevTag from '../components/DevTag';
 import MediaPlayer from '../components/MediaPlayer';
 import { fetchAerobookFeed, getCachedAerobookFeed, fetchYoutubePlaylist } from '../core/api/providers/media';
+import { fetchYouTubeChannelVideos } from '../core/api/providers/youtube';
+import { fetchTwitchChannelVideos } from '../core/api/providers/twitch';
 import {
   fetchDownloadStatus,
   fetchDownloadEnv,
@@ -48,13 +51,132 @@ import { formatRelativeTime } from '../utils/time';
 import { useAppStore } from '../stores';
 
 const STORAGE_KEY = 'omnicore.dev.video-catalog.tracked';
+const FOLLOWED_SOURCES_KEY = 'omnicore.dev.video-catalog.followed-sources';
 
-// ── Known playlists ──────────────────────────────────────────────────────
-const PLAYLISTS = [
-  { value: 'feed', label: 'Aerobook Feed (Recent)' },
-  { value: 'PLVct2QDhDrB2UV4UkGVdo1uct5I2AUqLE', label: 'Behind The Ships' },
-  { value: 'PLVct2QDhDrB2-Edu0jm18lz0W9NRcXy3Y', label: 'Squadron 42 Playlist' },
+const DEFAULT_VIDEO_SOURCES = [
+  {
+    id: 'feed',
+    kind: 'feed',
+    label: 'Official Star Citizen Feed',
+    description: 'Aggregated recent videos from the built-in Star Citizen / Squadron 42 feed.',
+  },
+  {
+    id: 'yt-playlist:PLVct2QDhDrB2UV4UkGVdo1uct5I2AUqLE',
+    kind: 'youtube-playlist',
+    externalId: 'PLVct2QDhDrB2UV4UkGVdo1uct5I2AUqLE',
+    label: 'Official YouTube Playlist: Behind The Ships',
+  },
+  {
+    id: 'yt-playlist:PLVct2QDhDrB2-Edu0jm18lz0W9NRcXy3Y',
+    kind: 'youtube-playlist',
+    externalId: 'PLVct2QDhDrB2-Edu0jm18lz0W9NRcXy3Y',
+    label: 'Official YouTube Playlist: Squadron 42',
+  },
 ];
+
+function parseDurationSeconds(video) {
+  const candidates = [
+    video?.durationSec,
+    video?.durationSeconds,
+    video?.lengthSeconds,
+    video?.duration,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate > 0 ? candidate : null;
+    }
+
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+
+      if (/^\d+$/.test(trimmed)) {
+        const parsed = Number(trimmed);
+        if (parsed > 0) {
+          return parsed;
+        }
+      }
+
+      const parts = trimmed.split(':').map((part) => Number(part));
+      if (parts.length >= 2 && parts.every((part) => Number.isFinite(part))) {
+        return parts.reduce((total, value) => total * 60 + value, 0);
+      }
+    }
+  }
+
+  return null;
+}
+
+function formatDurationLabel(totalSeconds) {
+  const seconds = Number(totalSeconds || 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '';
+  }
+
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+
+  if (hours > 0) {
+    return [hours, minutes, remainingSeconds].map((value, index) => String(value).padStart(index === 0 ? 1 : 2, '0')).join(':');
+  }
+
+  return `${String(minutes).padStart(1, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function normalizeHandle(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  return raw.startsWith('@') ? raw : `@${raw}`;
+}
+
+function buildFollowedSourceId(platform, input) {
+  const clean = String(input || '').trim().replace(/^@/, '').toLowerCase();
+  return `${platform}:${clean}`;
+}
+
+function loadFollowedSources() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOLLOWED_SOURCES_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((item) => item && typeof item.id === 'string' && typeof item.kind === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function saveFollowedSources(nextSources) {
+  try {
+    localStorage.setItem(FOLLOWED_SOURCES_KEY, JSON.stringify(nextSources));
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function normalizeFetchedVideos(videos, sourceMeta) {
+  const safeVideos = Array.isArray(videos) ? videos : [];
+  return safeVideos.map((video, index) => {
+    const externalId = video.externalId || video.youtubeId || video.twitchId || video.id || `${sourceMeta.id}-${index}`;
+    const source = sourceMeta.platform || video.source || (sourceMeta.kind.startsWith('twitch') ? 'twitch' : 'youtube');
+    const durationSec = parseDurationSeconds(video);
+
+    return {
+      id: `${sourceMeta.id}:${externalId}`,
+      source,
+      sourceLabel: sourceMeta.label,
+      title: video.title || video.name || `${sourceMeta.label} Video ${index + 1}`,
+      publishedAt: video.publishedAt || video.createdAt || video.recordedAt || null,
+      thumbnailUrl: video.thumbnailUrl || video.thumbnail || '',
+      url: video.url || video.link || '',
+      youtubeId: source === 'youtube' ? (video.externalId || video.youtubeId || null) : null,
+      twitchId: source === 'twitch' ? (video.externalId || video.twitchId || null) : null,
+      viewCount: Number(video.viewCount || video.views || 0),
+      durationSec,
+      durationLabel: formatDurationLabel(durationSec),
+    };
+  });
+}
 
 function loadTracked() {
   try {
@@ -101,16 +223,19 @@ const FILTER_OPTIONS = [
 
 export default function DeveloperVideoCatalogPage() {
   const [feed, setFeed] = useState(null);
-  const [playlistVideos, setPlaylistVideos] = useState([]);
-  const [playlistLoading, setPlaylistLoading] = useState(false);
+  const [sourceVideos, setSourceVideos] = useState([]);
+  const [sourceLoading, setSourceLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tracked, setTracked] = useState(loadTracked);
+  const [followedSources, setFollowedSources] = useState(loadFollowedSources);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [sourceFilter, setSourceFilter] = useState('all');
-  const [activePlaylist, setActivePlaylist] = useState('feed');
+  const [activeSource, setActiveSource] = useState('feed');
+  const [followPlatform, setFollowPlatform] = useState('youtube');
+  const [followInput, setFollowInput] = useState('');
 
   // Download queue state
   const [queueStatus, setQueueStatus] = useState(null);
@@ -121,7 +246,7 @@ export default function DeveloperVideoCatalogPage() {
   const connectionBackoffUntil = useRef(0);
   const logActivity = useAppStore((s) => s.logActivity);
 
-  // Load aerobook feed (used when activePlaylist === 'feed')
+  // Load aerobook feed (used when the built-in feed source is selected)
   useEffect(() => {
     const cached = getCachedAerobookFeed();
     if (cached) {
@@ -140,39 +265,51 @@ export default function DeveloperVideoCatalogPage() {
       });
   }, []);
 
-  // Load playlist when activePlaylist changes away from 'feed'
+  const videoSources = useMemo(() => [...DEFAULT_VIDEO_SOURCES, ...followedSources], [followedSources]);
+
+  const activeSourceMeta = useMemo(
+    () => videoSources.find((item) => item.id === activeSource) || DEFAULT_VIDEO_SOURCES[0],
+    [activeSource, videoSources]
+  );
+
+  // Load selected source when it changes away from the built-in feed
   useEffect(() => {
-    if (activePlaylist === 'feed') {
-      setPlaylistVideos([]);
+    if (activeSourceMeta.kind === 'feed') {
+      setSourceVideos([]);
       return;
     }
-    setPlaylistLoading(true);
+
+    setSourceLoading(true);
     setError('');
-    fetchYoutubePlaylist({ playlistId: activePlaylist, limit: 200 })
-      .then((videos) => {
-        setPlaylistVideos(videos);
-        setPlaylistLoading(false);
+
+    const loader = (() => {
+      if (activeSourceMeta.kind === 'youtube-playlist') {
+        return fetchYoutubePlaylist({ playlistId: activeSourceMeta.externalId, limit: 200 });
+      }
+      if (activeSourceMeta.kind === 'youtube-channel') {
+        return fetchYouTubeChannelVideos({ handle: activeSourceMeta.externalId, limit: 200 });
+      }
+      if (activeSourceMeta.kind === 'twitch-channel') {
+        return fetchTwitchChannelVideos({ channel: activeSourceMeta.externalId, limit: 200 });
+      }
+      return Promise.resolve([]);
+    })();
+
+    loader
+      .then((payload) => {
+        const videos = Array.isArray(payload) ? payload : payload?.videos || payload?.items || [];
+        setSourceVideos(normalizeFetchedVideos(videos, activeSourceMeta));
+        setSourceLoading(false);
       })
       .catch((err) => {
-        setError(err.message || 'Failed to load playlist');
-        setPlaylistLoading(false);
+        setError(err.message || 'Failed to load followed source');
+        setSourceLoading(false);
       });
-  }, [activePlaylist]);
+  }, [activeSourceMeta]);
 
   const allVideos = useMemo(() => {
-    if (activePlaylist !== 'feed') {
-      // Map raw youtube provider format to aerobook post shape for compatibility
-      return playlistVideos.map((v) => ({
-        id: `youtube-${v.externalId}`,
-        source: 'youtube',
-        sourceLabel: v.sourceLabel || 'youtube-playlist',
-        title: v.title,
-        publishedAt: v.publishedAt,
-        thumbnailUrl: v.thumbnailUrl,
-        url: v.url,
-        youtubeId: v.externalId,
-        viewCount: 0,
-      }));
+    if (activeSourceMeta.kind !== 'feed') {
+      return sourceVideos;
     }
     if (!feed?.categories) return [];
     const sc = feed.categories['star-citizen'] || [];
@@ -180,7 +317,7 @@ export default function DeveloperVideoCatalogPage() {
     return [...sc, ...sq].sort(
       (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
     );
-  }, [feed, playlistVideos, activePlaylist]);
+  }, [feed, sourceVideos, activeSourceMeta]);
 
   const filteredVideos = useMemo(() => {
     let result = allVideos;
@@ -220,6 +357,48 @@ export default function DeveloperVideoCatalogPage() {
   }
 
   const reviewedCount = allVideos.filter((v) => tracked[v.id]?.reviewed).length;
+
+  function addFollowedSource() {
+    const raw = String(followInput || '').trim();
+    if (!raw) return;
+
+    const normalizedInput = followPlatform === 'youtube' ? normalizeHandle(raw) : raw.replace(/^@/, '');
+    const kind = followPlatform === 'youtube' ? 'youtube-channel' : 'twitch-channel';
+    const source = {
+      id: buildFollowedSourceId(followPlatform, normalizedInput),
+      kind,
+      platform: followPlatform,
+      externalId: normalizedInput,
+      label: followPlatform === 'youtube'
+        ? `Followed YouTube: ${normalizedInput}`
+        : `Followed Twitch: ${normalizedInput}`,
+    };
+
+    setFollowedSources((prev) => {
+      if (prev.some((item) => item.id === source.id)) {
+        return prev;
+      }
+      const next = [...prev, source];
+      saveFollowedSources(next);
+      return next;
+    });
+    setFollowInput('');
+    setActiveSource(source.id);
+    setSearch('');
+    setFilter('all');
+  }
+
+  function removeFollowedSource(sourceId) {
+    setFollowedSources((prev) => {
+      const next = prev.filter((item) => item.id !== sourceId);
+      saveFollowedSources(next);
+      return next;
+    });
+
+    if (activeSource === sourceId) {
+      setActiveSource('feed');
+    }
+  }
 
   // ── Download queue helpers ──────────────────────────────────────────────
 
@@ -273,14 +452,14 @@ export default function DeveloperVideoCatalogPage() {
   }, [queueOpen, queueStatus?.workerRunning, refreshQueueStatus]);
 
   async function handleEnqueueAll() {
-    const playlistLabel = PLAYLISTS.find((p) => p.value === activePlaylist)?.label || '';
+    const playlistLabel = activeSourceMeta?.label || '';
     const videos = filteredVideos
       .filter((v) => v.youtubeId)
       .map((v) => ({
         videoId: v.youtubeId,
         title: v.title,
         url: v.url,
-        playlistId: activePlaylist !== 'feed' ? activePlaylist : '',
+        playlistId: activeSourceMeta.kind === 'youtube-playlist' ? activeSourceMeta.externalId : activeSourceMeta.id,
         playlistLabel,
       }));
     if (!videos.length) return;
@@ -290,12 +469,12 @@ export default function DeveloperVideoCatalogPage() {
 
   async function handleEnqueueOne(video) {
     if (!video.youtubeId) return;
-    const playlistLabel = PLAYLISTS.find((p) => p.value === activePlaylist)?.label || '';
+    const playlistLabel = activeSourceMeta?.label || '';
     await enqueueForDownload([{
       videoId: video.youtubeId,
       title: video.title,
       url: video.url,
-      playlistId: activePlaylist !== 'feed' ? activePlaylist : '',
+      playlistId: activeSourceMeta.kind === 'youtube-playlist' ? activeSourceMeta.externalId : activeSourceMeta.id,
       playlistLabel,
     }]);
     refreshQueueStatus();
@@ -307,10 +486,10 @@ export default function DeveloperVideoCatalogPage() {
         {/* Header */}
         <div>
           <Text size="xl" fw={700} style={{ color: '#00d9ff', letterSpacing: '0.08em' }}>
-            <DevTag tag="DEV08" />🎬 Video Catalog
+            <DevTag tag="DEV08" />🎬 Followed YouTube + Twitch Videos
           </Text>
           <Text size="sm" c="dimmed">
-            RSI YouTube &amp; Twitch video index. Tag, track, and queue videos for stream sessions.
+            Track official Star Citizen sources plus your own followed YouTube and Twitch channels. Tag, review, and queue videos for stream sessions.
           </Text>
         </div>
 
@@ -321,18 +500,71 @@ export default function DeveloperVideoCatalogPage() {
           <Badge color="orange" variant="light">{allVideos.length - reviewedCount} remaining</Badge>
         </Group>
 
-        {/* Playlist selector */}
+        <Card withBorder style={{ borderColor: 'rgba(0,217,255,0.2)' }}>
+          <Stack gap="sm">
+            <Group justify="space-between" wrap="wrap">
+              <Text fw={700}>Followed Sources</Text>
+              <Badge variant="light" color="cyan">{followedSources.length} custom follow(s)</Badge>
+            </Group>
+            <Text size="sm" c="dimmed">
+              Star Citizen defaults stay available, but this list is where you add other YouTube channels and Twitch accounts you want to watch for stream content.
+            </Text>
+            <Group gap="sm" wrap="wrap" align="flex-end">
+              <Select
+                label="Platform"
+                value={followPlatform}
+                onChange={(value) => setFollowPlatform(value || 'youtube')}
+                data={[
+                  { value: 'youtube', label: 'YouTube channel' },
+                  { value: 'twitch', label: 'Twitch channel' },
+                ]}
+                w={180}
+              />
+              <TextInput
+                label={followPlatform === 'youtube' ? 'Channel Handle' : 'Channel Username'}
+                placeholder={followPlatform === 'youtube' ? '@RobertsSpaceInd' : 'starcitizen'}
+                value={followInput}
+                onChange={(event) => setFollowInput(event.currentTarget.value)}
+                style={{ minWidth: 240, flex: 1 }}
+              />
+              <Button leftSection={<IconPlus size={16} />} onClick={addFollowedSource}>
+                Add Follow
+              </Button>
+            </Group>
+            {followedSources.length > 0 && (
+              <Group gap="xs" wrap="wrap">
+                {followedSources.map((item) => (
+                  <Badge
+                    key={item.id}
+                    size="lg"
+                    color={item.platform === 'twitch' ? 'violet' : 'red'}
+                    variant="light"
+                    rightSection={(
+                      <ActionIcon size="xs" variant="transparent" color="gray" onClick={() => removeFollowedSource(item.id)}>
+                        <IconX size={10} />
+                      </ActionIcon>
+                    )}
+                  >
+                    {item.label}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+          </Stack>
+        </Card>
+
+        {/* Source selector */}
         <Group gap="sm" wrap="wrap" align="center">
-          <Text size="sm" fw={600} c="dimmed">Playlist:</Text>
+          <Text size="sm" fw={600} c="dimmed">Source:</Text>
           <Select
-            data={PLAYLISTS}
-            value={activePlaylist}
+            data={videoSources.map((item) => ({ value: item.id, label: item.label }))}
+            value={activeSource}
             onChange={(v) => {
-              setActivePlaylist(v || 'feed');
+              setActiveSource(v || 'feed');
               setSearch('');
               setFilter('all');
             }}
-            w={240}
+            w={320}
           />
         </Group>
 
@@ -512,7 +744,7 @@ export default function DeveloperVideoCatalogPage() {
             style={{ flex: 1, minWidth: 200 }}
           />
           <Select data={FILTER_OPTIONS} value={filter} onChange={(v) => setFilter(v || 'all')} w={200} />
-          {activePlaylist === 'feed' && (
+          {activeSourceMeta.kind === 'feed' && (
             <Select
               data={[
                 { value: 'all', label: 'All Sources' },
@@ -527,7 +759,7 @@ export default function DeveloperVideoCatalogPage() {
         </Group>
 
         {/* Loading / Error */}
-        {(loading || playlistLoading) && (
+        {(loading || sourceLoading) && (
           <Center py="xl"><Loader size="sm" color="cyan" /></Center>
         )}
         {error && (
@@ -535,7 +767,7 @@ export default function DeveloperVideoCatalogPage() {
         )}
 
         {/* Video Grid */}
-        {!loading && !playlistLoading && filteredVideos.length === 0 && (
+        {!loading && !sourceLoading && filteredVideos.length === 0 && (
           <Center py="xl">
             <Text c="dimmed">No videos match your filters.</Text>
           </Center>
@@ -587,6 +819,9 @@ export default function DeveloperVideoCatalogPage() {
                       {video.source}
                     </Badge>
                     <Text size="xs" c="dimmed">{formatRelativeTime(video.publishedAt)}</Text>
+                    {video.durationLabel && (
+                      <Badge size="xs" color="blue" variant="light">{video.durationLabel}</Badge>
+                    )}
                     {meta.tag && (
                       <Badge size="xs" color={tagColor} variant="light">{meta.tag}</Badge>
                     )}
@@ -668,6 +903,9 @@ export default function DeveloperVideoCatalogPage() {
                 {selectedVideo.source}
               </Badge>
               <Text size="sm" c="dimmed">{formatRelativeTime(selectedVideo.publishedAt)}</Text>
+              {selectedVideo.durationLabel && (
+                <Text size="sm" c="dimmed">Duration: {selectedVideo.durationLabel}</Text>
+              )}
               {selectedVideo.viewCount > 0 && (
                 <Text size="sm" c="dimmed">{selectedVideo.viewCount.toLocaleString()} views</Text>
               )}

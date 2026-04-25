@@ -124,6 +124,7 @@ export default function Layout() {
             </Menu>
             <Button variant={path.startsWith('/developer') ? 'filled' : 'subtle'} component={Link} to="/developer">Developer</Button>
             <Button variant={path.startsWith('/streamer') ? 'filled' : 'subtle'} color="violet" component={Link} to="/streamer">Streamer</Button>
+            <Button variant={path.startsWith('/overlays') ? 'filled' : 'subtle'} color="pink" component={Link} to="/overlays">Overlays Studio</Button>
             <Button variant="subtle" onClick={() => {
               resetWelcome();
               window.location.href = '/welcome';

@@ -20,6 +20,7 @@ import {
   X52_MODES as MODES,
   LogitechX52Device,
 } from '../../libraries/hotas/index.js';
+import DevTag from '../../components/DevTag';
 
 // Build a unified lookup map matching the old X52_BUTTONS shape so the JSX
 // below can continue using X52_BUTTONS[index] and X52_BUTTONS[`${i}-axis`]
@@ -96,7 +97,7 @@ export default function HOTASTestPage() {
                 marginBottom: '0.5rem',
               }}
             >
-              🎮 HOTAS Input Test Lab
+              <DevTag tag="HC-TEST" />🎮 HOTAS Input Test Lab
             </Text>
             <Text size="sm" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
               Real-time detection and monitoring of HOTAS devices (Logitech X52)
