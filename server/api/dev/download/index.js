@@ -29,10 +29,15 @@ import {
   removeFromQueue,
   resetStuckDownloading,
 } from '../../../lib/downloadQueue.js';
-import { downloadVideo, checkYtDlpAvailable, checkFfmpegAvailable } from '../../../lib/ytdlp.js';
+import {
+  downloadVideo,
+  checkYtDlpAvailable,
+  checkFfmpegAvailable,
+  fetchVideoDurations,
+} from '../../../lib/ytdlp.js';
 
 const logger = createLogger('api.dev.download');
-const DEFAULT_STAR_CITIZEN_VIDEO_DIR = 'G:\\My Drive\\Gaming\\Star Citizen\\Behind-The-Ships';
+const DEFAULT_STAR_CITIZEN_VIDEO_DIR = 'G:\\My Drive\\Gaming\\Star Citizen\\StarCitizenTV';
 
 // SECURITY: Strict YouTube video ID validation
 const VALID_VIDEO_ID = /^[a-zA-Z0-9_-]{11}$/;
@@ -117,6 +122,18 @@ function buildStarCitizenPlaylistFromDirectories(downloadDirs) {
     fileName: item.fileName,
     videoId: item.videoId || null,
   }));
+}
+
+function getStarCitizenVideoDirectories() {
+  const primary = String(process.env.SC_STAR_CITIZEN_TV_DIR || '').trim();
+  const fallback = DEFAULT_STAR_CITIZEN_VIDEO_DIR;
+  const queueDir = String(process.env.YT_DOWNLOAD_DIR || '').trim();
+
+  return Array.from(new Set([
+    queueDir,
+    primary,
+    fallback,
+  ].filter(Boolean)));
 }
 
 function resolveExistingFilePath(baseDir, fileName) {
@@ -225,10 +242,7 @@ export function registerDownloadRoutes(app) {
   // resolve by embedded YouTube ID token: "...[VIDEO_ID].mp4".
   app.get('/api/dev/download/file/:fileName', (req, res) => {
     const fileName = String(req.params.fileName || '').trim();
-    const downloadDirs = Array.from(new Set([
-      String(process.env.YT_DOWNLOAD_DIR || '').trim(),
-      String(process.env.SC_BEHIND_THE_SHIPS_DIR || DEFAULT_STAR_CITIZEN_VIDEO_DIR).trim(),
-    ].filter(Boolean)));
+    const downloadDirs = getStarCitizenVideoDirectories();
 
     if (downloadDirs.length === 0) {
       return res.status(400).json({ error: 'No media directory is configured in .env' });
@@ -256,10 +270,7 @@ export function registerDownloadRoutes(app) {
   // GET /api/dev/download/library
   // Returns a live playlist built from existing Star Citizen video files.
   app.get('/api/dev/download/library', (_req, res) => {
-    const downloadDirs = Array.from(new Set([
-      String(process.env.YT_DOWNLOAD_DIR || '').trim(),
-      String(process.env.SC_BEHIND_THE_SHIPS_DIR || DEFAULT_STAR_CITIZEN_VIDEO_DIR).trim(),
-    ].filter(Boolean)));
+    const downloadDirs = getStarCitizenVideoDirectories();
 
     if (downloadDirs.length === 0) {
       return res.json({ items: [] });
@@ -309,6 +320,29 @@ export function registerDownloadRoutes(app) {
     } catch (err) {
       logger.error('env check error', err.message);
       res.status(500).json({ error: 'Failed to check environment' });
+    }
+  });
+
+  // GET /api/dev/download/durations?ids=abc123def45,xyz987uvw65
+  // Returns duration seconds map for requested YouTube IDs.
+  app.get('/api/dev/download/durations', async (req, res) => {
+    try {
+      const idsParam = String(req.query.ids || '').trim();
+      const ids = idsParam
+        .split(',')
+        .map((id) => String(id || '').trim())
+        .filter((id) => VALID_VIDEO_ID.test(id));
+
+      const uniqueIds = Array.from(new Set(ids)).slice(0, 300);
+      if (uniqueIds.length === 0) {
+        return res.json({ durations: {} });
+      }
+
+      const durations = await fetchVideoDurations(uniqueIds);
+      return res.json({ durations });
+    } catch (err) {
+      logger.error('duration metadata error', err.message);
+      return res.status(500).json({ error: 'Failed to resolve video durations' });
     }
   });
 

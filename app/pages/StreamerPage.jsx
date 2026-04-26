@@ -1,5 +1,7 @@
 import { Container, Title, Card, Text, Stack, Badge, Group, Button, SimpleGrid } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import { useEffect } from 'react';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { useNavigate } from 'react-router-dom';
 
 const tools = [
@@ -72,13 +74,17 @@ const tools = [
 ];
 
 export default function StreamerPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST01" />📡 Streamer Control</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
 
   return (
     <Container size="lg" py="md">
       <Stack gap="lg">
         <div>
-          <Title><DevTag tag="ST01" />📡 Streamer Control</Title>
           <Text c="dimmed" mt="xs">
             Tools for managing video playlists, OBS integration, and automated Star Citizen stream broadcasts.
           </Text>

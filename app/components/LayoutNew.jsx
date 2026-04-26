@@ -1,12 +1,14 @@
 import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu, Container } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore, useSettingsStore } from '../platform-core';
 import DevFooter from './DevFooter';
 import DeveloperNotes from './DeveloperNotes';
 import AerobookBar from './AerobookBar';
 import BrandWordmark from './BrandWordmark';
+import { PageTitleProvider } from '../contexts/PageTitleContext';
+import { getAutoPageTitle } from '../utils/pageTitle';
 
 const FRONTEND_VERSION = 'Alpha V0.1.0';
 
@@ -14,6 +16,12 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
+  const [pageTitle, setPageTitle] = useState(null);
+  const autoPageTitle = useMemo(() => getAutoPageTitle(path), [path]);
+
+  useEffect(() => {
+    setPageTitle(null);
+  }, [path]);
 
   const { colorScheme, toggleColorScheme, devMode, toggleDevMode, logActivity, resetWelcome } = useAppStore();
   const { costThreshold } = useSettingsStore();
@@ -88,6 +96,7 @@ export default function Layout() {
   const isActive = (route) => path === route || path.startsWith(route + '/');
 
   return (
+    <PageTitleProvider value={{ setPageTitle }}>
     <AppShell
       header={{ height: 60 }}
       navbar={{ width: 220, breakpoint: 'sm' }}
@@ -95,7 +104,7 @@ export default function Layout() {
       padding="md"
     >
       <AppShell.Header p="md">
-        <Group justify="space-between">
+        <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
@@ -130,6 +139,11 @@ export default function Layout() {
               window.location.href = '/welcome';
             }}>Sign Out</Button>
           </Group>
+          {(pageTitle || autoPageTitle) && (
+            <Text fw={700} size="lg" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: '#e8eaf0', letterSpacing: '0.04em' }}>
+              {pageTitle || autoPageTitle}
+            </Text>
+          )}
         </Group>
       </AppShell.Header>
 
@@ -223,5 +237,6 @@ export default function Layout() {
       </AppShell.Main>
       <DevFooter />
     </AppShell>
+    </PageTitleProvider>
   );
 }

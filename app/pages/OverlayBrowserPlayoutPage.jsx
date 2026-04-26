@@ -11,6 +11,9 @@ import {
   Title,
 } from '@mantine/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import {
   SCENE_MANAGER_STORAGE_KEY,
   parseSceneCollectionDocument,
@@ -62,6 +65,8 @@ function loadSceneStateFromStorage() {
 }
 
 export default function OverlayBrowserPlayoutPage() {
+  const location = useLocation();
+  const { setPageTitle } = usePageTitle();
   const [state, setState] = useState(loadSceneStateFromStorage);
   const [status, setStatus] = useState('Loaded scene collection from browser storage.');
   const [sceneIndex, setSceneIndex] = useState(0);
@@ -81,6 +86,16 @@ export default function OverlayBrowserPlayoutPage() {
 
   const transition = currentScene?.transition || 'fade';
   const transitionMs = transition === 'fade' ? 500 : 0;
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/overlays')) {
+      setPageTitle(<><DevTag tag="OV02" />Browser Playout</>);
+      return () => setPageTitle(null);
+    }
+
+    setPageTitle(<><DevTag tag="ST03" />Browser Playout</>);
+    return () => setPageTitle(null);
+  }, [location.pathname, setPageTitle]);
 
   useEffect(() => {
     return () => {
@@ -222,10 +237,7 @@ export default function OverlayBrowserPlayoutPage() {
     <Container size="xl" py="md">
       <Stack gap="md">
         <Group justify="space-between">
-          <div>
-            <Title order={2}>Browser Playout</Title>
-            <Text size="sm" c="dimmed">Run scenes in-browser for window capture workflows with basic transitions.</Text>
-          </div>
+          <Text size="sm" c="dimmed">Run scenes in-browser for window capture workflows with basic transitions.</Text>
           <Group>
             <Badge variant="light" color={isPlaying ? 'teal' : 'gray'}>{isPlaying ? 'Playing' : 'Stopped'}</Badge>
             <Button variant="light" onClick={reloadFromStorage}>Reload Scenes</Button>

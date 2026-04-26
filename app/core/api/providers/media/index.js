@@ -99,6 +99,25 @@ export async function fetchDownloadEnv() {
   return apiGet('/api/dev/download/env');
 }
 
+export async function fetchDownloadedLibrary() {
+  return apiGet('/api/dev/download/library');
+}
+
+export async function fetchDownloadDurations(videoIds = []) {
+  const ids = Array.from(new Set(
+    (Array.isArray(videoIds) ? videoIds : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)
+  ));
+
+  if (ids.length === 0) {
+    return { durations: {} };
+  }
+
+  const params = new URLSearchParams({ ids: ids.join(',') });
+  return apiGet(`/api/dev/download/durations?${params.toString()}`);
+}
+
 export async function enqueueForDownload(videos) {
   return apiPost('/api/dev/download/enqueue', { videos });
 }

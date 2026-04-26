@@ -11,8 +11,12 @@ const TEMPLATE_ID = 'star-citizen-core-v1';
 const DISCLAIMER_TEXT = 'Star Citizen, Roberts Space Industries©️(RSI) and Cloud Imperium ©️are registered trademarks of Cloud Imperium Rights LLC';
 const PRESET_STORAGE_KEY = 'streamerops.quickPlayout.remotePresets.v1';
 const LAST_PRESET_STORAGE_KEY = 'streamerops.quickPlayout.lastPreset.v1';
+const MONITOR_MUTE_STORAGE_KEY = 'streamerops.quickPlayout.remoteMonitorMuted.v1';
 const VISIBILITY_KEYS = ['header', 'hint', 'disclaimer'];
 const OVERLAY_CONTROL_API = '/api/overlays/star-citizen/control';
+const OVERLAY_STATE_API = '/api/overlays/star-citizen/state';
+const STAR_CITIZEN_LEFT_LOGO = '/assets/images/star-citizen/starcitizen-logo-white.png';
+const STAR_CITIZEN_RIGHT_LOGO = '/assets/images/star-citizen/MadeByTheCommunity_White.png';
 const DEFAULT_PRESETS = [
   {
     name: 'Broadcast',
@@ -36,6 +40,35 @@ function asAbsoluteAssetSource(source = '') {
   if (/^(https?:|blob:|data:|file:)/i.test(source)) return source;
   if (source.startsWith('/')) return source;
   return `/${source}`;
+}
+
+function normalizeMediaSource(source = '') {
+  return String(source || '').trim().toLowerCase();
+}
+
+function findPlaylistIndexBySelection(items, selection = {}, fallbackIndex = 0) {
+  const playlist = Array.isArray(items) ? items : [];
+  if (!playlist.length) return 0;
+
+  const wantedId = String(selection?.id || '').trim();
+  if (wantedId) {
+    const byId = playlist.findIndex((item) => String(item?.id || '').trim() === wantedId);
+    if (byId >= 0) return byId;
+  }
+
+  const wantedSource = normalizeMediaSource(selection?.source || '');
+  if (wantedSource) {
+    const bySource = playlist.findIndex((item) => normalizeMediaSource(item?.source || '') === wantedSource);
+    if (bySource >= 0) return bySource;
+  }
+
+  const numericFallback = Number.isFinite(fallbackIndex) ? Number(fallbackIndex) : Number(selection?.index);
+  if (Number.isFinite(numericFallback)) {
+    const max = playlist.length - 1;
+    return Math.max(0, Math.min(Math.trunc(numericFallback), max));
+  }
+
+  return 0;
 }
 
 function generateCommandId() {
@@ -67,6 +100,20 @@ function postControl(command, payload = {}, senderId = '') {
     keepalive: true,
   }).catch(() => {
     // Backend relay is best-effort.
+  });
+}
+
+function publishStateSnapshot(snapshot) {
+  fetch(OVERLAY_STATE_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target: TEMPLATE_ID,
+      snapshot,
+    }),
+    keepalive: true,
+  }).catch(() => {
+    // Snapshot publishing is best-effort; command relay remains primary.
   });
 }
 
@@ -108,6 +155,45 @@ function saveLastPresetName(name) {
   localStorage.setItem(LAST_PRESET_STORAGE_KEY, name);
 }
 
+function loadMonitorMutedPreference() {
+  try {
+    return localStorage.getItem(MONITOR_MUTE_STORAGE_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
+function saveMonitorMutedPreference(next) {
+  localStorage.setItem(MONITOR_MUTE_STORAGE_KEY, next ? '1' : '0');
+}
+
+function reconcileLivePlaylist(prev, incoming) {
+  const nextItems = Array.isArray(incoming) ? incoming : [];
+  if (nextItems.length === 0) {
+    return prev;
+  }
+
+  const previous = Array.isArray(prev) ? prev : [];
+  const hasFallbackOnly = previous.length > 0 && previous.every((item) => String(item?.id || '').startsWith('sc-fallback-'));
+  if (hasFallbackOnly) {
+    return nextItems;
+  }
+
+  const seen = new Set(previous.map((item) => `${String(item?.id || '').trim()}|${String(item?.source || '').trim()}`));
+  const additions = nextItems.filter((item) => {
+    const key = `${String(item?.id || '').trim()}|${String(item?.source || '').trim()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (additions.length === 0) {
+    return previous;
+  }
+
+  return [...previous, ...additions];
+}
+
 export default function OverlaysStarCitizenRemoteControlPage() {
   const template = useMemo(() => getQuickPlayoutTemplate(TEMPLATE_ID), []);
   const templatePlaylist = template.playlist || [];
@@ -120,6 +206,7 @@ export default function OverlaysStarCitizenRemoteControlPage() {
   const [controlsLocked, setControlsLocked] = useState(false);
   const [fullscreenHintVisible, setFullscreenHintVisible] = useState(true);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [monitorMuted, setMonitorMuted] = useState(loadMonitorMutedPreference);
   const [elementVisibility, setElementVisibility] = useState({
     header: true,
     hint: true,
@@ -134,9 +221,46 @@ export default function OverlaysStarCitizenRemoteControlPage() {
   const videoRef = useRef(null);
   const timerRef = useRef(null);
   const senderIdRef = useRef(`remote-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`);
+  const currentSelectionRef = useRef({ id: '', source: '' });
 
   const current = playlist[index] || null;
+  const currentHeaderTitle = String(current?.title || '').trim() || 'Awaiting Next Media Item';
   const currentSource = asAbsoluteAssetSource(current?.source || '');
+
+  useEffect(() => {
+    currentSelectionRef.current = {
+      id: String(current?.id || '').trim(),
+      source: String(current?.source || '').trim(),
+    };
+  }, [current?.id, current?.source]);
+
+  // Remote control is the authoritative operator surface. In addition to sending
+  // transient commands, it publishes a durable snapshot so source-capture can
+  // recover after refreshes, missed polls, or a Streamlabs browser-source reload.
+  useEffect(() => {
+    publishStateSnapshot({
+      index,
+      isPlaying,
+      isLooping,
+      stageMode,
+      closeGuardEnabled,
+      elementVisibility,
+      playlistLength: playlist.length,
+      currentId: String(current?.id || ''),
+      currentSource: String(current?.source || ''),
+      sentAt: new Date().toISOString(),
+    });
+  }, [
+    closeGuardEnabled,
+    current?.id,
+    current?.source,
+    elementVisibility,
+    index,
+    isLooping,
+    isPlaying,
+    playlist.length,
+    stageMode,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -149,14 +273,17 @@ export default function OverlaysStarCitizenRemoteControlPage() {
         const items = Array.isArray(data?.items) ? data.items : [];
         if (!active || items.length === 0) return;
         setPlaylist(items);
+        setIndex((prev) => findPlaylistIndexBySelection(items, currentSelectionRef.current, prev));
       } catch {
         // Keep template playlist if live library is unavailable.
       }
     }
 
     hydrateLivePlaylist();
+    const timer = setInterval(hydrateLivePlaylist, 15000);
     return () => {
       active = false;
+      clearInterval(timer);
     };
   }, []);
 
@@ -184,7 +311,12 @@ export default function OverlaysStarCitizenRemoteControlPage() {
     const clamped = Math.max(0, Math.min(nextIndex, max));
     setIndex(clamped);
     if (shouldBroadcast) {
-      postControl('goto', { index: clamped }, senderIdRef.current);
+      const selected = playlist[clamped] || null;
+      postControl('goto', {
+        index: clamped,
+        id: String(selected?.id || ''),
+        source: String(selected?.source || ''),
+      }, senderIdRef.current);
     }
   };
 
@@ -370,6 +502,14 @@ export default function OverlaysStarCitizenRemoteControlPage() {
     postControl('set-close-guard', { enabled: next }, senderIdRef.current);
   };
 
+  const toggleMonitorMuted = () => {
+    setMonitorMuted((prev) => {
+      const next = !prev;
+      saveMonitorMutedPreference(next);
+      return next;
+    });
+  };
+
   const toggleControlsLock = () => {
     if (controlsLocked) {
       const ok = window.confirm('Unlock controls for live operation changes?');
@@ -386,15 +526,67 @@ export default function OverlaysStarCitizenRemoteControlPage() {
     if (autostart) {
       params.set('autostart', '1');
     }
+    params.set('windowLabel', 'Program Output');
+    params.set('windowId', 'main');
     if (useFixedStage || stageMode === 'fixed16x9') {
       params.set('stage', 'fixed16x9');
+      params.set('viewport', '1920x1080');
+      params.set('output', 'clean');
+      params.set('mediaFit', 'cover');
     }
+
+    const popupFeatures = [
+      'popup=yes',
+      'width=1920',
+      'height=1080',
+      'left=40',
+      'top=40',
+      'menubar=no',
+      'toolbar=no',
+      'location=no',
+      'status=no',
+      `resizable=${useFixedStage || stageMode === 'fixed16x9' ? 'no' : 'yes'}`,
+    ].join(',');
 
     const target = `/overlays/window/star-citizen-playout${params.toString() ? `?${params.toString()}` : ''}`;
     window.open(
       target,
       'StarCitizenPlayoutWindow',
-      'popup=yes,width=1920,height=1080,left=40,top=40,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+      popupFeatures
+    );
+  };
+
+  const openSourceCaptureWindow = ({ autostart = true } = {}) => {
+    const params = new URLSearchParams();
+    if (autostart) {
+      params.set('autostart', '1');
+    }
+    params.set('windowLabel', 'Source Capture');
+    params.set('windowId', 'source-capture');
+    params.set('stage', 'fixed16x9');
+    params.set('viewport', '1920x1080');
+    params.set('mediaFit', 'contain');
+    params.set('canvasWidth', '1080');
+    params.set('canvasHeight', '600');
+
+    const popupFeatures = [
+      'popup=yes',
+      'width=1920',
+      'height=1080',
+      'left=60',
+      'top=60',
+      'menubar=no',
+      'toolbar=no',
+      'location=no',
+      'status=no',
+      'resizable=no',
+    ].join(',');
+
+    const target = `/overlays/window/star-citizen-source-capture?${params.toString()}`;
+    window.open(
+      target,
+      'StarCitizenSourceCaptureWindow',
+      popupFeatures
     );
   };
 
@@ -487,12 +679,17 @@ export default function OverlaysStarCitizenRemoteControlPage() {
 
     if (current.type === 'video' && videoRef.current) {
       const media = videoRef.current;
-      media.muted = false;
+      media.muted = monitorMuted;
       media.volume = 1;
 
       media.play().then(() => {
         setAudioBlocked(false);
       }).catch(async () => {
+        if (monitorMuted) {
+          setPlaying(false);
+          return;
+        }
+
         // If autoplay with audio is blocked, keep video moving muted and wait
         // for the operator's first interaction to re-enable audio.
         media.muted = true;
@@ -506,7 +703,7 @@ export default function OverlaysStarCitizenRemoteControlPage() {
     }
 
     return () => clearItemTimer();
-  }, [index, isPlaying, current?.id, isLooping]);
+  }, [index, isPlaying, current?.id, isLooping, monitorMuted]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -516,7 +713,7 @@ export default function OverlaysStarCitizenRemoteControlPage() {
   }, [isPlaying]);
 
   useEffect(() => {
-    if (!audioBlocked) return undefined;
+    if (!audioBlocked || monitorMuted) return undefined;
 
     const tryUnmute = () => {
       const media = videoRef.current;
@@ -537,7 +734,7 @@ export default function OverlaysStarCitizenRemoteControlPage() {
       window.removeEventListener('pointerdown', tryUnmute);
       window.removeEventListener('keydown', tryUnmute);
     };
-  }, [audioBlocked]);
+  }, [audioBlocked, monitorMuted]);
 
   useEffect(() => {
     const timer = setTimeout(() => setFullscreenHintVisible(false), 7000);
@@ -581,41 +778,60 @@ export default function OverlaysStarCitizenRemoteControlPage() {
       )}
 
       {elementVisibility.header && (
-        <Group
-          justify="space-between"
-          px="lg"
-          py="md"
-          style={{ borderBottom: `1px solid ${template.theme.border}`, cursor: 'pointer' }}
+        <div
+          style={{ borderBottom: `1px solid ${template.theme.border}`, padding: '10px 16px', position: 'relative', cursor: 'pointer' }}
           onClick={() => toggleElement('header')}
         >
-          <Stack gap={0}>
-            <Text fw={800} style={{ letterSpacing: '0.08em' }}>{template.theme.title}</Text>
-            <Text size="sm" c="rgba(216,243,255,0.75)">{template.theme.subtitle}</Text>
+          <div style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+            <img
+              src={STAR_CITIZEN_LEFT_LOGO}
+              alt="Star Citizen"
+              style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
+            />
+          </div>
+
+          <Stack gap={1} align="center" style={{ minHeight: 34, justifyContent: 'center' }}>
+            <Text fw={800} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Community Broadcast</Text>
+            <Text
+              size="sm"
+              c="rgba(216,243,255,0.82)"
+              style={{ maxWidth: '70vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {currentHeaderTitle}
+            </Text>
           </Stack>
-          <Badge variant="light" color="teal">Click to hide header</Badge>
-        </Group>
+
+          <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+            <img
+              src={STAR_CITIZEN_RIGHT_LOGO}
+              alt="Made By The Community"
+              style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
+            />
+          </div>
+        </div>
       )}
 
       <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
-        <div
-          style={{
-            width: stageMode === 'fixed16x9' ? 'min(96vw, 1720px)' : '100%',
-            height: stageMode === 'fixed16x9' ? 'auto' : '100%',
-            aspectRatio: stageMode === 'fixed16x9' ? '16 / 9' : undefined,
-            minHeight: stageMode === 'fixed16x9' ? undefined : '68vh',
-            border: `1px solid ${template.theme.border}`,
-            background: 'rgba(0, 0, 0, 0.7)',
-            borderRadius: 10,
-            overflow: 'hidden',
-            position: 'relative',
-          }}
-        >
+        <div style={{ display: 'grid', gridTemplateRows: 'auto auto', gap: 12, minHeight: 0 }}>
+          <div
+            style={{
+              width: stageMode === 'fixed16x9' ? 'min(96vw, 1720px)' : '100%',
+              height: stageMode === 'fixed16x9' ? 'auto' : '100%',
+              aspectRatio: stageMode === 'fixed16x9' ? '16 / 9' : undefined,
+              minHeight: stageMode === 'fixed16x9' ? undefined : '68vh',
+              border: `1px solid ${template.theme.border}`,
+              background: 'rgba(0, 0, 0, 0.7)',
+              borderRadius: 10,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
           {current?.type === 'video' ? (
             <video
               ref={videoRef}
               src={currentSource}
               style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
-              muted={audioBlocked}
+              muted={audioBlocked || monitorMuted}
               playsInline
               onEnded={() => goNext()}
             />
@@ -663,6 +879,43 @@ export default function OverlaysStarCitizenRemoteControlPage() {
               <Badge color="yellow" variant="filled">Click once to enable sound</Badge>
             </Group>
           )}
+          </div>
+
+          <div
+            style={{
+              border: `1px solid ${template.theme.border}`,
+              background: template.theme.panel,
+              borderRadius: 10,
+              padding: 12,
+            }}
+          >
+            <Stack gap="sm">
+              <Text fw={700} size="sm">Playlist Items</Text>
+              <Text size="xs" c="rgba(216,243,255,0.75)">
+                Queue order lives here. This area can also host transitional-image insert controls.
+              </Text>
+              <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                {playlist.map((item, itemIndex) => (
+                  <Button
+                    key={item.id}
+                    variant={itemIndex === index ? 'filled' : 'light'}
+                    color={itemIndex === index ? 'teal' : 'gray'}
+                    size="xs"
+                    onClick={() => goTo(itemIndex)}
+                    disabled={controlsLocked}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                  >
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                        {itemIndex + 1}. {item.type === 'image' ? 'Image' : 'Video'}
+                      </div>
+                      <div>{item.title || `Item ${itemIndex + 1}`}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </Stack>
+          </div>
         </div>
 
         <div
@@ -691,6 +944,13 @@ export default function OverlaysStarCitizenRemoteControlPage() {
               {closeGuardEnabled ? 'Disable Close Guard' : 'Enable Close Guard'}
             </Button>
 
+            <Button variant="light" color={monitorMuted ? 'gray' : 'teal'} onClick={toggleMonitorMuted}>
+              {monitorMuted ? 'Enable Remote Preview Sound' : 'Mute Remote Preview Sound'}
+            </Button>
+            <Text size="xs" c="rgba(216,243,255,0.75)">
+              Remote-only monitor audio. This does not mute the playout/source window.
+            </Text>
+
             <Group grow>
               <Button onClick={() => setPlaying(true)} disabled={controlsLocked}>Play</Button>
               <Button variant="light" onClick={() => setPlaying(false)} disabled={controlsLocked}>Pause</Button>
@@ -711,28 +971,6 @@ export default function OverlaysStarCitizenRemoteControlPage() {
             <Button variant="light" color="blue" onClick={() => setStage(stageMode === 'fixed16x9' ? 'fit' : 'fixed16x9')} disabled={controlsLocked}>
               {stageMode === 'fixed16x9' ? 'Use Fit Stage' : 'Use Fixed 16:9 Stage'}
             </Button>
-
-            <Text fw={600} size="sm">Playlist Items</Text>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {playlist.map((item, itemIndex) => (
-                <Button
-                  key={item.id}
-                  variant={itemIndex === index ? 'filled' : 'light'}
-                  color={itemIndex === index ? 'teal' : 'gray'}
-                  size="xs"
-                  onClick={() => goTo(itemIndex)}
-                  disabled={controlsLocked}
-                  style={{ justifyContent: 'flex-start', textAlign: 'left' }}
-                >
-                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                      {itemIndex + 1}. {item.type === 'image' ? 'Image' : 'Video'}
-                    </div>
-                    <div>{item.title || `Item ${itemIndex + 1}`}</div>
-                  </div>
-                </Button>
-              ))}
-            </div>
 
             <Text fw={600} size="sm">Presets</Text>
             <Select
@@ -795,6 +1033,13 @@ export default function OverlaysStarCitizenRemoteControlPage() {
               onClick={() => openPlayoutWindow({ autostart: true, useFixedStage: true })}
             >
               Open Fixed 16:9 Playout Window
+            </Button>
+            <Button
+              variant="light"
+              color="grape"
+              onClick={() => openSourceCaptureWindow({ autostart: true })}
+            >
+              Open Source Capture Window
             </Button>
 
           </Stack>

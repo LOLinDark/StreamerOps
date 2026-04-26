@@ -4,7 +4,7 @@ import BrandWordmark from './BrandWordmark';
 
 const FRONTEND_VERSION = 'Alpha V0.1.0';
 
-export default function AppHeader() {
+export default function AppHeader({ pageTitle }) {
   const navigate = useNavigate();
   const rsiHandle = localStorage.getItem('rsiHandle') || 'Citizen';
 
@@ -17,6 +17,7 @@ export default function AppHeader() {
         borderBottom: '1px solid rgba(0, 217, 255, 0.2)',
         backdropFilter: 'blur(8px)',
         minHeight: '60px',
+        position: 'relative',
       }}
     >
       {/* Left: Title */}
@@ -29,6 +30,12 @@ export default function AppHeader() {
         </div>
         <Badge size="sm" variant="light" color="cyan">{FRONTEND_VERSION}</Badge>
       </Group>
+
+      {pageTitle && (
+        <Text fw={700} size="lg" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: '#e8eaf0', letterSpacing: '0.04em' }}>
+          {pageTitle}
+        </Text>
+      )}
 
       {/* Right: Menu & User */}
       <Group gap="lg">

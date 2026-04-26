@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { IconDownload, IconTrash, IconRefresh, IconUpload } from '@tabler/icons-react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const SOUND_LIBRARY_KEY = 'streamerops.soundLibrary.v1';
 
@@ -79,6 +80,7 @@ function saveSoundLibrary(sounds) {
 }
 
 export default function StreamerSoundFilesPage() {
+  const { setPageTitle } = usePageTitle();
   const [sounds, setSounds] = useState(loadSoundLibrary);
   const [metadata, setMetadata] = useState({});
   const [status, setStatus] = useState('Ready');
@@ -111,6 +113,11 @@ export default function StreamerSoundFilesPage() {
 
     fetchAllMetadata();
   }, [sounds]);
+
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST05" />Sound Files</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
 
   function removeSound(id) {
     const sound = sounds.find((s) => s.id === id);
@@ -147,12 +154,9 @@ export default function StreamerSoundFilesPage() {
   return (
     <Container size="lg" py="md">
       <Stack gap="lg">
-        <div>
-          <Title><DevTag tag="ST05" />🎵 Sound Files Management</Title>
-          <Text c="dimmed" mt="xs">
-            Manage audio files for use in overlays and playout sequences. Add background music, alerts, and streaming audio.
-          </Text>
-        </div>
+        <Text c="dimmed">
+          Manage audio files for use in overlays and playout sequences. Add background music, alerts, and streaming audio.
+        </Text>
 
         <Card withBorder radius="lg" p="md" bg="rgba(248, 249, 250, 0.02)">
           <Stack gap="md">

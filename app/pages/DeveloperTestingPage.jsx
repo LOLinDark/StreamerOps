@@ -4,7 +4,7 @@ import DevTag from '../components/DevTag';
 import { restoreStoredDirectoryEntries, supportsStoredDirectoryHandles } from '../streamer/directoryHandles';
 
 const SEQUENCE_LIBRARY_KEY = 'streamerops.sequenceLibrary.v1';
-const TARGET_PLAYLIST_NAME = 'Star Citizen - Behind The Ships TV';
+const TARGET_PLAYLIST_NAME = 'Star Citizen - StarCitizenTV';
 
 function readSequenceLibrary() {
   try {

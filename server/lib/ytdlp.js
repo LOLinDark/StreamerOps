@@ -186,3 +186,71 @@ export function downloadVideo({ videoId, subDir = '', onProgress }) {
     });
   });
 }
+
+/**
+ * Fetch duration metadata for multiple YouTube videos without downloading files.
+ * Returns a map: { [videoId]: durationSeconds }
+ *
+ * @param {string[]} videoIds
+ * @returns {Promise<Record<string, number>>}
+ */
+export function fetchVideoDurations(videoIds = []) {
+  return new Promise((resolve, reject) => {
+    const uniqueIds = Array.from(new Set(
+      (Array.isArray(videoIds) ? videoIds : [])
+        .map((id) => String(id || '').trim())
+        .filter((id) => VALID_VIDEO_ID.test(id))
+    ));
+
+    if (uniqueIds.length === 0) {
+      resolve({});
+      return;
+    }
+
+    const urls = uniqueIds.map((id) => `https://www.youtube.com/watch?v=${id}`);
+    const args = [
+      '--skip-download',
+      '--ignore-errors',
+      '--no-warnings',
+      '--no-playlist',
+      '--print', '%(id)s\t%(duration)s',
+      ...urls,
+    ];
+
+    const proc = spawn(getYtDlpBin(), args, { shell: false });
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (data) => {
+      stdout += data.toString();
+    });
+    proc.stderr?.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('error', (err) => {
+      reject(new Error(`yt-dlp metadata spawn failed: ${err.message}`));
+    });
+
+    proc.on('close', (code) => {
+      const durations = {};
+      const lines = String(stdout || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+      for (const line of lines) {
+        const [id, rawDuration] = line.split('\t');
+        const videoId = String(id || '').trim();
+        const parsed = Number(rawDuration);
+        if (!VALID_VIDEO_ID.test(videoId)) continue;
+        if (!Number.isFinite(parsed) || parsed <= 0) continue;
+        durations[videoId] = Math.round(parsed);
+      }
+
+      if (code !== 0 && Object.keys(durations).length === 0) {
+        reject(new Error(`yt-dlp metadata failed with code ${code}: ${String(stderr || '').slice(0, 300)}`));
+        return;
+      }
+
+      resolve(durations);
+    });
+  });
+}

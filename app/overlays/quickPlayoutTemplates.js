@@ -1,6 +1,6 @@
 export const QUICK_PLAYOUT_CONTROL_CHANNEL = 'streamerops.quickPlayout.control.v1';
 const SEQUENCE_LIBRARY_KEY = 'streamerops.sequenceLibrary.v1';
-const STAR_CITIZEN_PLAYLIST_NAME = 'Star Citizen - Behind The Ships TV';
+const STAR_CITIZEN_PLAYLIST_NAME = 'Star Citizen - StarCitizenTV';
 const STAR_CITIZEN_FALLBACK_FILE = 'Star_Citizen_Behind_the_Ships_-_MISC_Hull_B [JWEbWUewco0].mp4';
 
 function getStorage() {
@@ -62,7 +62,7 @@ function buildStarCitizenPlaylist() {
     {
       id: 'sc-fallback-video-001',
       type: 'video',
-      title: 'Star Citizen Behind the Ships - MISC Hull B',
+      title: 'Star Citizen TV - MISC Hull B',
       source: `/api/dev/download/file/${encodeURIComponent(STAR_CITIZEN_FALLBACK_FILE)}`,
     },
     {
@@ -80,7 +80,7 @@ const STAR_CITIZEN_TEMPLATE = {
   label: 'Star Citizen Core Playout',
   description: 'Hardcoded Star Citizen themed sequence for immediate fullscreen browser streaming.',
   theme: {
-    title: 'STAR CITIZEN BROADCAST',
+    title: 'STAR CITIZEN COMMUNITY BROADCAST',
     subtitle: 'Verse Operations Feed',
     accent: '#4cc9f0',
     panel: 'rgba(2, 10, 20, 0.62)',

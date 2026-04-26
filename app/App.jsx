@@ -5,7 +5,6 @@ import StreamerLayout from './components/StreamerLayout';
 import OverlaysLayout from './components/OverlaysLayout';
 import MainLayout from './components/MainLayout';
 import DevPanel from './components/DevPanel';
-import InDevelopmentBanner from './components/InDevelopmentBanner';
 import RSILoginPage from './pages/RSILoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MainDashboardPage from './pages/MainDashboardPage';
@@ -50,6 +49,7 @@ const StreamerSoundFilesPage = lazy(() => import('./pages/StreamerSoundFilesPage
 const OverlaysStudioPage = lazy(() => import('./pages/OverlaysStudioPage'));
 const OverlayBrowserPlayoutPage = lazy(() => import('./pages/OverlayBrowserPlayoutPage'));
 const OverlaysStarCitizenQuickPlayoutPage = lazy(() => import('./pages/OverlaysStarCitizenQuickPlayoutPage'));
+const OverlaysStarCitizenSourceCapturePage = lazy(() => import('./pages/OverlaysStarCitizenSourceCapturePage'));
 const OverlaysStarCitizenRemoteControlPage = lazy(() => import('./pages/OverlaysStarCitizenRemoteControlPage'));
 const OverlaysStarCitizenControlPage = lazy(() => import('./pages/OverlaysStarCitizenControlPage'));
 
@@ -91,7 +91,10 @@ function App() {
   const location = useLocation();
   const welcomeCompleted = useAppStore((s) => s.welcomeCompleted);
   const completeWelcome = useAppStore((s) => s.completeWelcome);
-  const isStreamPlayoutWindow = location.pathname === '/overlays/window/star-citizen-playout';
+  const isStreamPlayoutWindow = [
+    '/overlays/window/star-citizen-playout',
+    '/overlays/window/star-citizen-source-capture',
+  ].includes(location.pathname);
 
   console.log('[OmniCore] App.jsx rendering, welcomeCompleted:', welcomeCompleted);
 
@@ -99,7 +102,6 @@ function App() {
     <>
       {!isStreamPlayoutWindow && <NetworkStatusBadge />}
       {!isStreamPlayoutWindow && <DevPanel />}
-      {!isStreamPlayoutWindow && <InDevelopmentBanner />}
       <RuntimeObservers />
       <Routes>
         {/* Theme Lab Routes - Public, no auth required */}
@@ -117,6 +119,7 @@ function App() {
 
         {/* Dedicated clean window playout route (no app shell) */}
         <Route path="/overlays/window/star-citizen-playout" element={<Lazy Component={OverlaysStarCitizenQuickPlayoutPage} />} />
+        <Route path="/overlays/window/star-citizen-source-capture" element={<Lazy Component={OverlaysStarCitizenSourceCapturePage} />} />
         <Route path="/overlays/window/star-citizen-remote-control" element={<Lazy Component={OverlaysStarCitizenRemoteControlPage} />} />
         
         {/* Main User-Facing Dashboard & Feature Pages (with MainLayout) */}

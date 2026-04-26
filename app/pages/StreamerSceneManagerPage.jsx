@@ -15,8 +15,9 @@ import {
   Title,
 } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import {
   SCENE_IMPORT_QUEUE_KEY,
   SCENE_MANAGER_STORAGE_KEY,
@@ -41,9 +42,21 @@ function downloadTextFile(content, filename, mimeType = 'application/json') {
 
 export default function StreamerSceneManagerPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { setPageTitle } = usePageTitle();
   const [state, setState] = useState(createDefaultSceneState);
   const [status, setStatus] = useState('Ready');
   const importInputRef = useRef(null);
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/overlays')) {
+      setPageTitle(<><DevTag tag="OV01" />Scene Manager</>);
+      return () => setPageTitle(null);
+    }
+
+    setPageTitle(<><DevTag tag="ST03" />Scene Manager</>);
+    return () => setPageTitle(null);
+  }, [location.pathname, setPageTitle]);
 
   const sceneCount = useMemo(() => state.scenes.length, [state.scenes.length]);
 
@@ -156,12 +169,9 @@ export default function StreamerSceneManagerPage() {
     <Container size="lg" py="md">
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
-          <div>
-            <Title order={2}><DevTag tag="ST03" />Scene Manager</Title>
-            <Text c="dimmed" mt="xs">
-              Manage a collection of stream scenes for browser-window playout. Branding and page-level elements are handled by Overlays Studio layout.
-            </Text>
-          </div>
+          <Text c="dimmed">
+            Manage a collection of stream scenes for browser-window playout. Branding and page-level elements are handled by Overlays Studio layout.
+          </Text>
           <Badge color="violet" variant="light">Basic v1</Badge>
         </Group>
 

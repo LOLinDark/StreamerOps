@@ -1,9 +1,11 @@
 import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu } from '@mantine/core';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore, useSettingsStore } from '../platform-core';
 import DevFooter from './DevFooter';
 import BrandWordmark from './BrandWordmark';
+import { PageTitleProvider } from '../contexts/PageTitleContext';
+import { getAutoPageTitle } from '../utils/pageTitle';
 
 const FRONTEND_VERSION = 'Alpha V0.1.0';
 
@@ -11,6 +13,7 @@ export default function StreamerLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
+  const autoPageTitle = useMemo(() => getAutoPageTitle(path), [path]);
 
   const { colorScheme, toggleColorScheme, devMode, toggleDevMode, logActivity } = useAppStore();
 
@@ -54,7 +57,15 @@ export default function StreamerLayout() {
 
   const isActive = (route) => path === route || path.startsWith(route + '/');
 
+  const [pageTitle, setPageTitle] = useState(null);
+
+  // Reset page title on navigation so stale titles don't linger
+  useEffect(() => {
+    setPageTitle(null);
+  }, [path]);
+
   return (
+    <PageTitleProvider value={{ setPageTitle }}>
     <AppShell
       header={{ height: 60 }}
       // VS Code's built-in browser is often narrow; collapse side rails at mobile
@@ -64,7 +75,7 @@ export default function StreamerLayout() {
       padding="md"
     >
       <AppShell.Header p="md">
-        <Group justify="space-between">
+        <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
@@ -95,6 +106,11 @@ export default function StreamerLayout() {
             <Button variant={path.startsWith('/streamer') ? 'filled' : 'subtle'} color="violet" component={Link} to="/streamer">Streamer</Button>
             <Button variant={path.startsWith('/overlays') ? 'filled' : 'subtle'} color="pink" component={Link} to="/overlays">Overlays Studio</Button>
           </Group>
+          {(pageTitle || autoPageTitle) && (
+            <Text fw={700} size="lg" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: '#e8eaf0', letterSpacing: '0.04em' }}>
+              {pageTitle || autoPageTitle}
+            </Text>
+          )}
         </Group>
       </AppShell.Header>
 
@@ -199,5 +215,6 @@ export default function StreamerLayout() {
         {devMode && <DevFooter />}
       </AppShell.Main>
     </AppShell>
+    </PageTitleProvider>
   );
 }

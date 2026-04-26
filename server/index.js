@@ -53,9 +53,44 @@ const OVERLAY_COMMAND_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/i;
 const OVERLAY_TARGET_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/i;
 const MAX_OVERLAY_EVENTS = 200;
 
+// RELAY ARCHITECTURE:
+// The overlay control relay is a simple in-memory event queue that coordinates playout
+// across multiple windows (e.g., remote operator tab + Streamlabs browser source).
+// 
+// Design:
+// - Remote control sends: POST /api/overlays/star-citizen/control with command
+// - Server appends to circular buffer, assigns monotonic seq (sequence number)
+// - Playout page polls: GET ?after=<lastSeq> to fetch only new events
+// - Max 200 events kept in memory; seq is per-server-restart, not persisted
+// 
+// TRADEOFFS:
+// Polling (not WebSocket):
+//   Pros: Simpler, survives browser sleep modes, works on any browser, no persistent connection
+//   Cons: 500ms latency, higher polling overhead if many tabs
+// 
+// In-memory (not Redis/Database):
+//   Pros: Zero external dependencies, fast, minimal complexity
+//   Cons: Events lost on restart, max 200 events (~100 seconds of history at 2 Hz polling)
+// 
+// Sequence-based polling (not timestamp):
+//   Pros: Handles clock skew, no ambiguity about "new" events
+//   Cons: Must track seq per client (done via ref in frontend)
+// 
+// FUTURE IMPROVEMENTS:
+// - Persist event log to file for restart resilience
+// - Add Redis if scaling to multiple servers
+// - Use WebSocket as optimization (polling as fallback)
+// - Add Pusher/Firebase for serverless deployment
+
 const overlayControlBus = {
   seq: 0,
   events: [],
+};
+
+const overlayControlState = {
+  target: 'star-citizen-core-v1',
+  snapshot: null,
+  updatedAt: null,
 };
 
 // --- Rate limiting ---
@@ -363,15 +398,31 @@ const limiter = rateLimit({
     const originalUrl = String(req.originalUrl || '');
     return path.startsWith('/dev/download/')
       || path.startsWith('/api/dev/download/')
+      || path.startsWith('/media/thumbnail')
+      || path.startsWith('/api/media/thumbnail')
       || path.startsWith('/overlays/star-citizen/control')
+      || path.startsWith('/overlays/star-citizen/state')
       || path.startsWith('/api/overlays/star-citizen/control')
+      || path.startsWith('/api/overlays/star-citizen/state')
       || originalUrl.startsWith('/api/dev/download/')
-      || originalUrl.startsWith('/api/overlays/star-citizen/control');
+      || originalUrl.startsWith('/api/media/thumbnail')
+      || originalUrl.startsWith('/api/overlays/star-citizen/control')
+      || originalUrl.startsWith('/api/overlays/star-citizen/state');
   },
 });
+  // Rate limit bypass rationale:
+  // - /overlays/star-citizen/control: Polling every 500ms from potentially many tabs would hit 100 req/15min fast
+  // - /media/thumbnail: Browser caching should handle (if not cached, it's a bug, not abuse)
+  // - /dev/download/: Live library hydration needs low latency
+  // SECURITY: These endpoints are CORS-restricted to localhost:4342/4242 only. In production,
+  // add IP whitelist or move relay to internal-only endpoint behind a reverse proxy.
 app.use('/api/', limiter);
 
 // --- Star Citizen overlay command relay (cross-window/browser sync) ---
+// --- Star Citizen overlay command relay (cross-window/browser sync) ---
+// This relay allows any window to send commands that other windows can pick up via polling.
+// Use case: Remote operator page sends "next" → polling playout page picks it up → state updates → Streamlabs sees new video
+
 app.post('/api/overlays/star-citizen/control', (req, res) => {
   const command = String(req.body?.command || '').trim();
   const target = String(req.body?.target || '').trim() || 'star-citizen-core-v1';
@@ -388,6 +439,8 @@ app.post('/api/overlays/star-citizen/control', (req, res) => {
     return res.status(400).json({ error: 'Invalid target' });
   }
 
+  // Assign unique seq and store event. Clients poll with ?after=<seq> to get only new events.
+  // commandId, senderId, sentAt are optional but help with debugging (e.g., "which tab sent this?").
   const event = {
     seq: ++overlayControlBus.seq,
     command,
@@ -400,6 +453,7 @@ app.post('/api/overlays/star-citizen/control', (req, res) => {
   };
 
   overlayControlBus.events.push(event);
+  // Keep only newest 200 events to avoid memory bloat. Old seq numbers are never re-used.
   if (overlayControlBus.events.length > MAX_OVERLAY_EVENTS) {
     overlayControlBus.events.splice(0, overlayControlBus.events.length - MAX_OVERLAY_EVENTS);
   }
@@ -408,12 +462,49 @@ app.post('/api/overlays/star-citizen/control', (req, res) => {
 });
 
 app.get('/api/overlays/star-citizen/control', (req, res) => {
+  // Poll endpoint: clients fetch new events with ?after=<lastSeqTheyProcessed>
+  // Returns: { latestSeq: 42, events: [{seq:40, command:'next'}, {seq:41, command:'play'}, ...] }
+  // Events are max 50 per request to keep payloads small even if relay fills up.
   const after = Math.max(0, Number.parseInt(String(req.query.after || '0'), 10) || 0);
   const events = overlayControlBus.events.filter((event) => event.seq > after).slice(-50);
   res.set('Cache-Control', 'no-store');
   return res.json({
     latestSeq: overlayControlBus.seq,
     events,
+  });
+});
+
+// Snapshot endpoint: the remote-control page publishes its latest authoritative playout state
+// so refreshed or briefly-disconnected outputs can recover without waiting for a full command replay.
+app.post('/api/overlays/star-citizen/state', (req, res) => {
+  const target = String(req.body?.target || '').trim() || 'star-citizen-core-v1';
+  const snapshot = req.body?.snapshot && typeof req.body.snapshot === 'object' ? req.body.snapshot : null;
+
+  if (!OVERLAY_TARGET_PATTERN.test(target) && target !== 'all') {
+    return res.status(400).json({ error: 'Invalid target' });
+  }
+
+  if (!snapshot) {
+    return res.status(400).json({ error: 'Snapshot object is required' });
+  }
+
+  overlayControlState.target = target;
+  overlayControlState.snapshot = snapshot;
+  overlayControlState.updatedAt = new Date().toISOString();
+
+  return res.json({
+    success: true,
+    target: overlayControlState.target,
+    updatedAt: overlayControlState.updatedAt,
+  });
+});
+
+app.get('/api/overlays/star-citizen/state', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.json({
+    target: overlayControlState.target,
+    updatedAt: overlayControlState.updatedAt,
+    snapshot: overlayControlState.snapshot,
   });
 });
 

@@ -1,6 +1,8 @@
 import { Badge, Button, Card, Container, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import DevTag from '../components/DevTag';
 import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const tools = [
   {
@@ -48,29 +50,82 @@ const tools = [
 
 export default function OverlaysStudioPage() {
   const navigate = useNavigate();
+  const { setPageTitle } = usePageTitle();
+
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="OV01" />Overlays Studio</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
 
   const openPlayoutWindow = ({ useFixedStage = true } = {}) => {
     const params = new URLSearchParams({ autostart: '1' });
+    params.set('windowLabel', 'Program Output');
+    params.set('windowId', 'main');
     if (useFixedStage) {
       params.set('stage', 'fixed16x9');
+      params.set('viewport', '1920x1080');
+      params.set('output', 'clean');
+      params.set('mediaFit', 'cover');
     }
+
+    const popupFeatures = [
+      'popup=yes',
+      'width=1920',
+      'height=1080',
+      'left=40',
+      'top=40',
+      'menubar=no',
+      'toolbar=no',
+      'location=no',
+      'status=no',
+      `resizable=${useFixedStage ? 'no' : 'yes'}`,
+    ].join(',');
 
     window.open(
       `/overlays/window/star-citizen-playout?${params.toString()}`,
       'StarCitizenPlayoutWindow',
-      'popup=yes,width=1920,height=1080,left=40,top=40,menubar=no,toolbar=no,location=no,status=no,resizable=yes'
+      popupFeatures
+    );
+  };
+
+  const openSourceCaptureWindow = () => {
+    const params = new URLSearchParams({
+      autostart: '1',
+      windowLabel: 'Source Capture',
+      windowId: 'source-capture',
+      stage: 'fixed16x9',
+      viewport: '1920x1080',
+      mediaFit: 'contain',
+      canvasWidth: '1080',
+      canvasHeight: '600',
+    });
+
+    const popupFeatures = [
+      'popup=yes',
+      'width=1920',
+      'height=1080',
+      'left=60',
+      'top=60',
+      'menubar=no',
+      'toolbar=no',
+      'location=no',
+      'status=no',
+      'resizable=no',
+    ].join(',');
+
+    window.open(
+      `/overlays/window/star-citizen-source-capture?${params.toString()}`,
+      'StarCitizenSourceCaptureWindow',
+      popupFeatures
     );
   };
 
   return (
     <Container size="lg" py="md">
       <Stack gap="lg">
-        <div>
-          <Title><DevTag tag="OV01" />Overlays Studio</Title>
-          <Text c="dimmed" mt="xs">
-            Build scene compositions, test transitions, and run browser-based playout designed for window capture workflows.
-          </Text>
-        </div>
+        <Text c="dimmed">
+          Build scene compositions, test transitions, and run browser-based playout designed for window capture workflows.
+        </Text>
 
         <Card withBorder p="md" style={{ borderColor: 'rgba(255, 99, 132, 0.35)', background: 'rgba(255, 99, 132, 0.06)' }}>
           <Stack gap="xs">
@@ -87,6 +142,9 @@ export default function OverlaysStudioPage() {
               </Button>
               <Button variant="light" color="cyan" onClick={() => openPlayoutWindow({ useFixedStage: true })}>
                 Open Fixed 16:9 Playout
+              </Button>
+              <Button variant="light" color="grape" onClick={() => openSourceCaptureWindow()}>
+                Open Source Capture Window
               </Button>
               <Button variant="light" onClick={() => window.open('/overlays/window/star-citizen-remote-control', '_blank', 'noopener,noreferrer')}>
                 Open Star Citizen Remote Control

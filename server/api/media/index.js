@@ -24,6 +24,16 @@ const OFFICIAL_LIVE_CHANNELS = [
     url: `https://www.twitch.tv/${encodeURIComponent(TWITCH_DEFAULTS.channelLogin)}`,
   },
 ];
+const THUMBNAIL_ALLOWED_HOSTS = [
+  'ytimg.com',
+  'i.ytimg.com',
+  'yt3.ggpht.com',
+  'i3.ytimg.com',
+  'i4.ytimg.com',
+  'img.youtube.com',
+  'static-cdn.jtvnw.net',
+  'clips-media-assets2.twitch.tv',
+];
 
 let aerobookCache = null;
 const liveStatusMemory = new Map();
@@ -241,6 +251,59 @@ async function resolveFollowLiveStatus({ platform, username }) {
 }
 
 export function registerMediaRoutes(app) {
+  app.get('/api/media/thumbnail', async (req, res) => {
+    try {
+      const raw = String(req.query.url || '').trim();
+      if (!raw) {
+        return res.status(400).json({ error: 'url is required' });
+      }
+
+      let parsed;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        return res.status(400).json({ error: 'Invalid thumbnail url' });
+      }
+
+      const protocol = String(parsed.protocol || '').toLowerCase();
+      if (protocol !== 'https:' && protocol !== 'http:') {
+        return res.status(400).json({ error: 'Unsupported protocol' });
+      }
+
+      const host = String(parsed.hostname || '').toLowerCase();
+      const allowed = THUMBNAIL_ALLOWED_HOSTS.some((entry) => host === entry || host.endsWith(`.${entry}`));
+      if (!allowed) {
+        return res.status(403).json({ error: 'Thumbnail host is not allowed' });
+      }
+
+      const response = await fetch(parsed.toString(), {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'StreamerOps/0.1.0 (+https://localhost:4342)',
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).end();
+      }
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.startsWith('image/')) {
+        return res.status(415).json({ error: 'Upstream resource is not an image' });
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=1800');
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+      return res.status(200).send(buffer);
+    } catch (error) {
+      logger.warn('thumbnail proxy error', error?.message || 'unknown error');
+      return res.status(502).json({ error: 'Failed to fetch thumbnail' });
+    }
+  });
+
   app.get('/api/media/youtube/channel', async (req, res) => {
     try {
       const handle = String(req.query.handle || YOUTUBE_DEFAULTS.channelHandle);

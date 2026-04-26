@@ -90,6 +90,20 @@ export default function NetworkStatusBadge() {
       aria-live="polite"
       aria-label={`Network status ${status.label.toLowerCase()}`}
     >
+      <Badge
+        size="sm"
+        variant="transparent"
+        style={{
+          color: '#ffcf7a',
+          fontWeight: 700,
+          letterSpacing: '0.1em',
+          borderRight: '1px solid rgba(255, 207, 122, 0.35)',
+          paddingRight: '8px',
+          marginRight: '2px',
+        }}
+      >
+        IN-DEVELOPMENT
+      </Badge>
       <span
         style={{
           width: '8px',

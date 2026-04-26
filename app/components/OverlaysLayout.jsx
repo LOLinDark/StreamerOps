@@ -1,8 +1,10 @@
 import { AppShell, Badge, Button, Card, Divider, Group, NavLink, Stack, Switch, Text, Title } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore } from '../platform-core';
 import BrandWordmark from './BrandWordmark';
+import { PageTitleProvider } from '../contexts/PageTitleContext';
+import { getAutoPageTitle } from '../utils/pageTitle';
 
 const FRONTEND_VERSION = 'Alpha V0.1.0';
 
@@ -10,7 +12,14 @@ export default function OverlaysLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const path = location.pathname;
+  const autoPageTitle = useMemo(() => getAutoPageTitle(path), [path]);
   const { colorScheme, toggleColorScheme, devMode, toggleDevMode, logActivity } = useAppStore();
+
+  const [pageTitle, setPageTitle] = useState(null);
+
+  useEffect(() => {
+    setPageTitle(null);
+  }, [path]);
 
   const [serverOnline, setServerOnline] = useState(false);
   const [projectHours, setProjectHours] = useState(0);
@@ -33,6 +42,7 @@ export default function OverlaysLayout() {
   const isActive = (route) => path === route || path.startsWith(`${route}/`);
 
   return (
+    <PageTitleProvider value={{ setPageTitle }}>
     <AppShell
       header={{ height: 60 }}
       navbar={{ width: 250, breakpoint: 'md', collapsed: { mobile: true } }}
@@ -40,7 +50,7 @@ export default function OverlaysLayout() {
       padding="md"
     >
       <AppShell.Header p="md">
-        <Group justify="space-between">
+        <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
@@ -53,6 +63,11 @@ export default function OverlaysLayout() {
             <Button variant={path.startsWith('/streamer') ? 'filled' : 'subtle'} color="violet" component={Link} to="/streamer">Streamer</Button>
             <Button variant={path.startsWith('/overlays') ? 'filled' : 'subtle'} color="pink" component={Link} to="/overlays">Overlays Studio</Button>
           </Group>
+          {(pageTitle || autoPageTitle) && (
+            <Text fw={700} size="lg" style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: '#e8eaf0', letterSpacing: '0.04em' }}>
+              {pageTitle || autoPageTitle}
+            </Text>
+          )}
         </Group>
       </AppShell.Header>
 
@@ -66,6 +81,7 @@ export default function OverlaysLayout() {
           <NavLink label="Browser Playout" active={isActive('/overlays/playout')} component={Link} to="/overlays/playout" />
           <Divider my="xs" label="Quick Pages" labelPosition="center" />
           <NavLink label="Star Citizen Playout Window" active={isActive('/overlays/window/star-citizen-playout')} component={Link} to="/overlays/window/star-citizen-playout" />
+          <NavLink label="Star Citizen Source Capture" active={isActive('/overlays/window/star-citizen-source-capture')} component={Link} to="/overlays/window/star-citizen-source-capture" />
           <NavLink label="Star Citizen Remote Control" active={isActive('/overlays/window/star-citizen-remote-control')} component={Link} to="/overlays/window/star-citizen-remote-control" />
           <NavLink label="Star Citizen Quick Controls" active={isActive('/overlays/star-citizen-control')} component={Link} to="/overlays/star-citizen-control" />
           <Divider my="xs" label="Compatibility" labelPosition="center" />
@@ -96,5 +112,6 @@ export default function OverlaysLayout() {
         <Outlet />
       </AppShell.Main>
     </AppShell>
+    </PageTitleProvider>
   );
 }

@@ -7,6 +7,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+let activitySequence = 0;
+
+function createActivityId() {
+  activitySequence += 1;
+  return `${Date.now()}-${activitySequence}`;
+}
+
 const useAppStore = create(
   persist(
     (set) => ({
@@ -25,7 +32,7 @@ const useAppStore = create(
       activities: [],
       logActivity: (type, details) => set((s) => ({
         activities: [
-          { id: Date.now(), timestamp: new Date().toLocaleTimeString(), type, details },
+          { id: createActivityId(), timestamp: new Date().toLocaleTimeString(), type, details },
           ...s.activities
         ].slice(0, 50)
       })),

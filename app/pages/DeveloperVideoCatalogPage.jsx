@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ActionIcon,
   Anchor,
@@ -7,7 +7,6 @@ import {
   Card,
   Center,
   Checkbox,
-  Collapse,
   Container,
   Group,
   Loader,
@@ -26,12 +25,8 @@ import {
   IconX,
   IconDownload,
   IconPlus,
-  IconPlayerPlay,
-  IconPlayerStop,
   IconRefresh,
-  IconChevronDown,
-  IconChevronUp,
-  IconTrash,
+  IconCheck,
 } from '@tabler/icons-react';
 import DevTag from '../components/DevTag';
 import MediaPlayer from '../components/MediaPlayer';
@@ -39,19 +34,29 @@ import { fetchAerobookFeed, getCachedAerobookFeed, fetchYoutubePlaylist } from '
 import { fetchYouTubeChannelVideos } from '../core/api/providers/youtube';
 import { fetchTwitchChannelVideos } from '../core/api/providers/twitch';
 import {
-  fetchDownloadStatus,
-  fetchDownloadEnv,
+  fetchDownloadedLibrary,
+  fetchDownloadDurations,
   enqueueForDownload,
   startDownloadWorker,
-  stopDownloadWorker,
-  retryDownload,
-  removeDownloadItem,
 } from '../core/api/providers/media';
 import { formatRelativeTime } from '../utils/time';
-import { useAppStore } from '../stores';
+import { notifications } from '@mantine/notifications';
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  });
+}
 
 const STORAGE_KEY = 'omnicore.dev.video-catalog.tracked';
 const FOLLOWED_SOURCES_KEY = 'omnicore.dev.video-catalog.followed-sources';
+const VALID_YOUTUBE_ID = /^[a-zA-Z0-9_-]{11}$/;
 
 const DEFAULT_VIDEO_SOURCES = [
   {
@@ -131,6 +136,89 @@ function normalizeHandle(input) {
   return raw.startsWith('@') ? raw : `@${raw}`;
 }
 
+function extractYouTubeIdFromUrl(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match?.[1] && VALID_YOUTUBE_ID.test(match[1])) {
+      return match[1];
+    }
+  }
+
+  return '';
+}
+
+function resolveVideoYoutubeId(video) {
+  const candidates = [
+    video?.youtubeId,
+    video?.externalId,
+    video?.videoId,
+    video?.id,
+    video?.slug,
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (VALID_YOUTUBE_ID.test(value)) {
+      return value;
+    }
+  }
+
+  return extractYouTubeIdFromUrl(video?.url || video?.link || '');
+}
+
+function resolveThumbnailUrl(video, youtubeId = '') {
+  const rawCandidates = [
+    video?.thumbnailUrl,
+    video?.thumbnail,
+    video?.imageUrl,
+    video?.previewImageUrl,
+    video?.coverUrl,
+    video?.image,
+  ];
+
+  for (const candidate of rawCandidates) {
+    const raw = String(candidate || '').trim();
+    if (!raw) continue;
+
+    // Twitch and provider templates often use width/height placeholders.
+    const templated = raw
+      .replace(/\{width\}|%\{width\}/g, '640')
+      .replace(/\{height\}|%\{height\}/g, '360');
+
+    if (templated) {
+      if (templated.startsWith('//')) {
+        return `https:${templated}`;
+      }
+      return templated;
+    }
+  }
+
+  if (youtubeId && VALID_YOUTUBE_ID.test(youtubeId)) {
+    return `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+  }
+
+  return '';
+}
+
+function toThumbnailProxyUrl(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/')) return raw;
+
+  const params = new URLSearchParams({ url: raw });
+  return `/api/media/thumbnail?${params.toString()}`;
+}
+
 function buildFollowedSourceId(platform, input) {
   const clean = String(input || '').trim().replace(/^@/, '').toLowerCase();
   return `${platform}:${clean}`;
@@ -157,9 +245,11 @@ function saveFollowedSources(nextSources) {
 function normalizeFetchedVideos(videos, sourceMeta) {
   const safeVideos = Array.isArray(videos) ? videos : [];
   return safeVideos.map((video, index) => {
-    const externalId = video.externalId || video.youtubeId || video.twitchId || video.id || `${sourceMeta.id}-${index}`;
+    const resolvedYoutubeId = resolveVideoYoutubeId(video);
+    const externalId = video.externalId || video.youtubeId || video.twitchId || video.id || resolvedYoutubeId || `${sourceMeta.id}-${index}`;
     const source = sourceMeta.platform || video.source || (sourceMeta.kind.startsWith('twitch') ? 'twitch' : 'youtube');
     const durationSec = parseDurationSeconds(video);
+    const thumbnailUrl = resolveThumbnailUrl(video, resolvedYoutubeId);
 
     return {
       id: `${sourceMeta.id}:${externalId}`,
@@ -167,9 +257,9 @@ function normalizeFetchedVideos(videos, sourceMeta) {
       sourceLabel: sourceMeta.label,
       title: video.title || video.name || `${sourceMeta.label} Video ${index + 1}`,
       publishedAt: video.publishedAt || video.createdAt || video.recordedAt || null,
-      thumbnailUrl: video.thumbnailUrl || video.thumbnail || '',
+      thumbnailUrl,
       url: video.url || video.link || '',
-      youtubeId: source === 'youtube' ? (video.externalId || video.youtubeId || null) : null,
+      youtubeId: resolvedYoutubeId || (source === 'youtube' ? (video.externalId || video.youtubeId || null) : null),
       twitchId: source === 'twitch' ? (video.externalId || video.twitchId || null) : null,
       viewCount: Number(video.viewCount || video.views || 0),
       durationSec,
@@ -236,15 +326,11 @@ export default function DeveloperVideoCatalogPage() {
   const [activeSource, setActiveSource] = useState('feed');
   const [followPlatform, setFollowPlatform] = useState('youtube');
   const [followInput, setFollowInput] = useState('');
+  const [downloadingVideoId, setDownloadingVideoId] = useState('');
 
-  // Download queue state
-  const [queueStatus, setQueueStatus] = useState(null);
-  const [queueEnv, setQueueEnv] = useState(null);
-  const [queueOpen, setQueueOpen] = useState(false);
-  const [queueLoading, setQueueLoading] = useState(false);
-  const prevItemStatuses = useRef({});
-  const connectionBackoffUntil = useRef(0);
-  const logActivity = useAppStore((s) => s.logActivity);
+  // Download state
+  const [downloadedVideoIds, setDownloadedVideoIds] = useState(() => new Set());
+  const [durationByVideoId, setDurationByVideoId] = useState({});
 
   // Load aerobook feed (used when the built-in feed source is selected)
   useEffect(() => {
@@ -284,10 +370,10 @@ export default function DeveloperVideoCatalogPage() {
 
     const loader = (() => {
       if (activeSourceMeta.kind === 'youtube-playlist') {
-        return fetchYoutubePlaylist({ playlistId: activeSourceMeta.externalId, limit: 200 });
+        return fetchYoutubePlaylist({ playlistId: activeSourceMeta.externalId, limit: 500 });
       }
       if (activeSourceMeta.kind === 'youtube-channel') {
-        return fetchYouTubeChannelVideos({ handle: activeSourceMeta.externalId, limit: 200 });
+        return fetchYouTubeChannelVideos({ handle: activeSourceMeta.externalId, limit: 500 });
       }
       if (activeSourceMeta.kind === 'twitch-channel') {
         return fetchTwitchChannelVideos({ channel: activeSourceMeta.externalId, limit: 200 });
@@ -318,6 +404,69 @@ export default function DeveloperVideoCatalogPage() {
       (a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)
     );
   }, [feed, sourceVideos, activeSourceMeta]);
+
+  const refreshDownloadedVideoIds = useCallback(async () => {
+    try {
+      const payload = await fetchDownloadedLibrary();
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      const next = new Set(
+        items
+          .map((item) => String(item?.videoId || '').trim())
+          .filter(Boolean)
+      );
+      setDownloadedVideoIds(next);
+    } catch {
+      // Keep last known downloaded state on errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDownloadedVideoIds();
+  }, [refreshDownloadedVideoIds]);
+
+  useEffect(() => {
+    const candidateIds = Array.from(new Set(
+      allVideos
+        .map((video) => resolveVideoYoutubeId(video))
+        .filter(Boolean)
+    ));
+
+    const unresolved = candidateIds.filter((id) => durationByVideoId[id] == null).slice(0, 120);
+    if (unresolved.length === 0) {
+      return;
+    }
+
+    let active = true;
+    fetchDownloadDurations(unresolved)
+      .then((payload) => {
+        if (!active) return;
+        const raw = payload?.durations && typeof payload.durations === 'object' ? payload.durations : {};
+        setDurationByVideoId((prev) => {
+          const next = { ...prev };
+          unresolved.forEach((id) => {
+            const value = Number(raw[id]);
+            next[id] = Number.isFinite(value) && value > 0 ? value : 0;
+          });
+          return next;
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setDurationByVideoId((prev) => {
+          const next = { ...prev };
+          unresolved.forEach((id) => {
+            if (next[id] == null) {
+              next[id] = 0;
+            }
+          });
+          return next;
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [allVideos, durationByVideoId]);
 
   const filteredVideos = useMemo(() => {
     let result = allVideos;
@@ -400,105 +549,91 @@ export default function DeveloperVideoCatalogPage() {
     }
   }
 
-  // ── Download queue helpers ──────────────────────────────────────────────
-
-  const refreshQueueStatus = useCallback(() => {
-    // Back off if a recent connection-refused error is still within the quiet window
-    const now = Date.now();
-    if (now < connectionBackoffUntil.current) return;
-
-    setQueueLoading(true);
-    Promise.all([fetchDownloadStatus(), fetchDownloadEnv()])
-      .then(([status, env]) => {
-        connectionBackoffUntil.current = 0;
-        // Diff item statuses to emit Activity Monitor events
-        const prev = prevItemStatuses.current;
-        for (const item of status.items || []) {
-          const oldStatus = prev[item.videoId];
-          if (oldStatus !== item.status) {
-            const label = item.title ? `"${item.title.slice(0, 60)}"` : item.videoId;
-            if (item.status === 'downloading') {
-              logActivity('⬇️ YT-DLP', `Started: ${label}`);
-            } else if (item.status === 'done') {
-              logActivity('✅ YT-DLP', `Finished: ${label}`);
-            } else if (item.status === 'failed') {
-              logActivity('❌ YT-DLP', `Failed: ${label}${item.error ? ` — ${item.error.slice(0, 80)}` : ''}`);
-            }
-          }
-          prev[item.videoId] = item.status;
-        }
-        setQueueStatus(status);
-        setQueueEnv(env);
-        setQueueLoading(false);
-      })
-      .catch((err) => {
-        // ERR_CONNECTION_REFUSED surfaces as a TypeError or a network-level error
-        const isConnectionRefused =
-          err instanceof TypeError || (err?.status == null && err?.message?.toLowerCase().includes('fetch'));
-        if (isConnectionRefused) {
-          const backoffMs = (15 + Math.random() * 15) * 1000; // 15–30 s
-          connectionBackoffUntil.current = Date.now() + backoffMs;
-        }
-        setQueueLoading(false);
+  async function handleManualDownloadOne(video) {
+    const youtubeId = resolveVideoYoutubeId(video);
+    if (!youtubeId) {
+      notifications.show({
+        title: 'Download unavailable',
+        message: 'This video does not have a valid YouTube ID for the downloader.',
+        color: 'orange',
       });
-  }, [logActivity]);
+      return;
+    }
 
-  // Auto-poll every 5s only while the panel is open AND worker is confirmed running.
-  // No fetch happens on mount or on panel open — only via explicit user action (refresh / toggle).
-  useEffect(() => {
-    if (!queueOpen || !queueStatus?.workerRunning) return;
-    const id = setInterval(refreshQueueStatus, 5000);
-    return () => clearInterval(id);
-  }, [queueOpen, queueStatus?.workerRunning, refreshQueueStatus]);
-
-  async function handleEnqueueAll() {
-    const playlistLabel = activeSourceMeta?.label || '';
-    const videos = filteredVideos
-      .filter((v) => v.youtubeId)
-      .map((v) => ({
-        videoId: v.youtubeId,
-        title: v.title,
-        url: v.url,
+    setDownloadingVideoId(youtubeId);
+    try {
+      const playlistLabel = activeSourceMeta?.label || '';
+      await withTimeout(enqueueForDownload([{
+        videoId: youtubeId,
+        title: video.title,
+        url: video.url,
         playlistId: activeSourceMeta.kind === 'youtube-playlist' ? activeSourceMeta.externalId : activeSourceMeta.id,
         playlistLabel,
-      }));
-    if (!videos.length) return;
-    await enqueueForDownload(videos);
-    refreshQueueStatus();
-  }
+      }]), 10000, 'Queue request');
+      await withTimeout(startDownloadWorker(), 10000, 'Worker start request');
 
-  async function handleEnqueueOne(video) {
-    if (!video.youtubeId) return;
-    const playlistLabel = activeSourceMeta?.label || '';
-    await enqueueForDownload([{
-      videoId: video.youtubeId,
-      title: video.title,
-      url: video.url,
-      playlistId: activeSourceMeta.kind === 'youtube-playlist' ? activeSourceMeta.externalId : activeSourceMeta.id,
-      playlistLabel,
-    }]);
-    refreshQueueStatus();
+      notifications.show({
+        title: 'Download started',
+        message: `Queued and started: ${String(video.title || youtubeId).slice(0, 90)}`,
+        color: 'green',
+      });
+
+      // Refresh downloaded state after worker has had a moment to progress.
+      window.setTimeout(() => {
+        refreshDownloadedVideoIds();
+      }, 2000);
+    } catch (err) {
+      let message = err?.message || 'Could not start manual download.';
+      if (message.includes('YT_DOWNLOAD_DIR')) {
+        message = 'Download folder is not configured. Set YT_DOWNLOAD_DIR in server/.env.';
+      }
+      if (message.includes('yt-dlp')) {
+        message = 'yt-dlp is missing. Install yt-dlp on the server host.';
+      }
+      notifications.show({
+        title: 'Download failed',
+        message,
+        color: 'red',
+      });
+    } finally {
+      setDownloadingVideoId('');
+    }
   }
 
   return (
     <Container size="xl" py="xl">
       <Stack gap="lg">
-        {/* Header */}
-        <div>
-          <Text size="xl" fw={700} style={{ color: '#00d9ff', letterSpacing: '0.08em' }}>
-            <DevTag tag="DEV08" />🎬 Followed YouTube + Twitch Videos
-          </Text>
-          <Text size="sm" c="dimmed">
-            Track official Star Citizen sources plus your own followed YouTube and Twitch channels. Tag, review, and queue videos for stream sessions.
-          </Text>
-        </div>
+        <div
+          style={{
+            position: 'sticky',
+            top: '127px',
+            zIndex: 20,
+            marginBottom: '0.25rem',
+            padding: '0.75rem 1rem',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 0,
+            backgroundColor: 'rgba(11, 20, 40, 0.94)',
+            backdropFilter: 'blur(6px)',
+            boxShadow: '0 6px 14px rgba(0, 0, 0, 0.2)',
+          }}
+        >
+          <Stack gap="sm">
+            <div>
+              <Text size="xl" fw={700}>
+                <DevTag tag="DEV08" />🎬 Followed YouTube + Twitch Videos
+              </Text>
+              <Text size="sm" c="dimmed">
+                Track official Star Citizen sources plus your own followed YouTube and Twitch channels. Tag, review, preview, and manually download individual videos.
+              </Text>
+            </div>
 
-        {/* Stats */}
-        <Group gap="sm">
-          <Badge color="cyan" variant="light">{allVideos.length} total</Badge>
-          <Badge color="green" variant="light">{reviewedCount} reviewed</Badge>
-          <Badge color="orange" variant="light">{allVideos.length - reviewedCount} remaining</Badge>
-        </Group>
+            <Group gap="sm">
+              <Badge color="cyan" variant="light">{allVideos.length} total</Badge>
+              <Badge color="green" variant="light">{reviewedCount} reviewed</Badge>
+              <Badge color="orange" variant="light">{allVideos.length - reviewedCount} remaining</Badge>
+            </Group>
+          </Stack>
+        </div>
 
         <Card withBorder style={{ borderColor: 'rgba(0,217,255,0.2)' }}>
           <Stack gap="sm">
@@ -566,168 +701,15 @@ export default function DeveloperVideoCatalogPage() {
             }}
             w={320}
           />
+          <Button size="xs" variant="subtle" leftSection={<IconRefresh size={12} />} onClick={refreshDownloadedVideoIds}>
+            Refresh Downloaded State
+          </Button>
         </Group>
-
-        {/* ── Download Queue Panel ── */}
-        <Card withBorder style={{ borderColor: 'rgba(0,217,255,0.2)' }}>
-          <Group justify="space-between" mb={queueOpen ? 'sm' : 0}>
-            <Group gap="sm">
-              <IconDownload size={16} color="#00d9ff" />
-              <Text fw={600} size="sm" style={{ color: '#00d9ff' }}>Download Queue</Text>
-              {queueStatus && (
-                <Group gap="xs">
-                  <Badge size="xs" color="yellow" variant="light">{queueStatus.stats.queued} queued</Badge>
-                  <Badge size="xs" color="green" variant="light">{queueStatus.stats.done} done</Badge>
-                  {queueStatus.stats.failed > 0 && (
-                    <Badge size="xs" color="red" variant="light">{queueStatus.stats.failed} failed</Badge>
-                  )}
-                  {queueStatus.workerRunning && (
-                    <Badge size="xs" color="cyan" variant="filled">● Running</Badge>
-                  )}
-                </Group>
-              )}
-            </Group>
-            <Group gap="xs">
-              <Tooltip label="Refresh queue status">
-                <ActionIcon size="sm" variant="subtle" color="cyan" onClick={refreshQueueStatus} loading={queueLoading}>
-                  <IconRefresh size={14} />
-                </ActionIcon>
-              </Tooltip>
-              <ActionIcon size="sm" variant="subtle" color="cyan" onClick={() => { setQueueOpen((o) => !o); if (!queueOpen) refreshQueueStatus(); }}>
-                {queueOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-              </ActionIcon>
-            </Group>
-          </Group>
-
-          <Collapse in={queueOpen}>
-            <Stack gap="sm">
-              {/* Environment check */}
-              {queueEnv && (
-                <Group gap="sm" wrap="wrap">
-                  <Badge size="xs" color={queueEnv.ytdlp.available ? 'green' : 'red'} variant="light">
-                    yt-dlp {queueEnv.ytdlp.available ? `✓ ${queueEnv.ytdlp.version}` : '✗ not found'}
-                  </Badge>
-                  <Badge size="xs" color={queueEnv.ffmpeg.available ? 'green' : 'red'} variant="light">
-                    ffmpeg {queueEnv.ffmpeg.available ? '✓' : '✗ not found'}
-                  </Badge>
-                  {queueEnv.downloadDir && (
-                    <Badge size="xs" color="cyan" variant="light">
-                      📁 {queueEnv.downloadDir}
-                    </Badge>
-                  )}
-                  {!queueEnv.downloadDirSet && (
-                    <Badge size="xs" color="orange" variant="light">YT_DOWNLOAD_DIR not set in .env</Badge>
-                  )}
-                </Group>
-              )}
-
-              {/* Worker controls */}
-              <Group gap="sm" wrap="wrap" align="flex-start">
-                {!queueStatus?.workerRunning ? (
-                  <Tooltip
-                    label={
-                      !queueEnv ? 'Click Refresh to check environment first' :
-                      !queueEnv.ytdlp.available ? 'yt-dlp is not installed — run: pip install yt-dlp' :
-                      !queueEnv.downloadDirSet ? 'Set YT_DOWNLOAD_DIR in server/.env first' :
-                      'Start downloading queued videos'
-                    }
-                    position="bottom"
-                  >
-                    <Button
-                      size="xs"
-                      leftSection={<IconPlayerPlay size={12} />}
-                      color="green"
-                      onClick={async () => { await startDownloadWorker(); refreshQueueStatus(); }}
-                      disabled={queueEnv != null && (!queueEnv.ytdlp.available || !queueEnv.downloadDirSet)}
-                    >
-                      Start Worker
-                    </Button>
-                  </Tooltip>
-                ) : (
-                  <Button
-                    size="xs"
-                    leftSection={<IconPlayerStop size={12} />}
-                    color="orange"
-                    onClick={async () => { await stopDownloadWorker(); refreshQueueStatus(); }}
-                  >
-                    {queueStatus?.workerStopping ? 'Stopping…' : 'Stop Worker'}
-                  </Button>
-                )}
-                <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconDownload size={12} />}
-                  onClick={handleEnqueueAll}
-                  disabled={filteredVideos.filter((v) => v.youtubeId).length === 0}
-                >
-                  Queue {filteredVideos.filter((v) => v.youtubeId).length} visible videos
-                </Button>
-              </Group>
-
-              {/* Current download */}
-              {queueStatus?.currentVideoId && (
-                <Group gap="sm">
-                  <Loader size={12} color="cyan" />
-                  <Text size="xs" c="cyan">Downloading: {queueStatus.currentVideoId}</Text>
-                </Group>
-              )}
-
-              {/* Queue list */}
-              {queueStatus?.items?.length > 0 && (
-                <ScrollArea h={220}>
-                  <Stack gap={4}>
-                    {queueStatus.items.map((item) => (
-                      <Group key={item.videoId} justify="space-between" wrap="nowrap" gap="xs" style={{ padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                        <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-                          <Text size="xs" lineClamp={1} style={{ color: '#e0eaf4' }}>{item.title || item.videoId}</Text>
-                          <Group gap="xs">
-                            <Badge
-                              size="xs"
-                              color={
-                                item.status === 'done' ? 'green' :
-                                item.status === 'downloading' ? 'cyan' :
-                                item.status === 'failed' ? 'red' :
-                                item.status === 'queued' ? 'yellow' : 'gray'
-                              }
-                              variant="light"
-                            >
-                              {item.status}
-                            </Badge>
-                            {item.playlistLabel && (
-                              <Text size="xs" c="dimmed">{item.playlistLabel}</Text>
-                            )}
-                            {item.error && (
-                              <Text size="xs" c="red" lineClamp={1}>{item.error}</Text>
-                            )}
-                          </Group>
-                        </Stack>
-                        <Group gap={4} wrap="nowrap">
-                          {item.status === 'failed' && (
-                            <Tooltip label="Retry">
-                              <ActionIcon size="xs" variant="subtle" color="orange" onClick={async () => { await retryDownload(item.videoId); refreshQueueStatus(); }}>
-                                <IconRefresh size={10} />
-                              </ActionIcon>
-                            </Tooltip>
-                          )}
-                          {item.status !== 'downloading' && (
-                            <Tooltip label="Remove from queue">
-                              <ActionIcon size="xs" variant="subtle" color="red" onClick={async () => { await removeDownloadItem(item.videoId); refreshQueueStatus(); }}>
-                                <IconTrash size={10} />
-                              </ActionIcon>
-                            </Tooltip>
-                          )}
-                        </Group>
-                      </Group>
-                    ))}
-                  </Stack>
-                </ScrollArea>
-              )}
-              {queueStatus?.items?.length === 0 && (
-                <Text size="xs" c="dimmed">Queue is empty.</Text>
-              )}
-            </Stack>
-          </Collapse>
-        </Card>
+        {activeSourceMeta.kind === 'youtube-channel' && (
+          <Text size="xs" c="dimmed">
+            Followed YouTube channels are read from the public YouTube feed endpoint, which can return only the latest uploads.
+          </Text>
+        )}
 
         {/* Filters */}
         <Group gap="sm" wrap="wrap">
@@ -777,6 +759,12 @@ export default function DeveloperVideoCatalogPage() {
           {filteredVideos.map((video) => {
             const meta = tracked[video.id] || {};
             const tagColor = TAG_COLORS[meta.tag] || 'gray';
+            const resolvedYoutubeId = resolveVideoYoutubeId(video);
+            const resolvedDurationSec = video.durationSec || Number(durationByVideoId[resolvedYoutubeId] || 0);
+            const resolvedDurationLabel = video.durationLabel || formatDurationLabel(resolvedDurationSec);
+            const resolvedThumbnail = resolveThumbnailUrl(video, resolvedYoutubeId);
+            const resolvedThumbnailProxy = toThumbnailProxyUrl(resolvedThumbnail);
+            const alreadyDownloaded = Boolean(resolvedYoutubeId && downloadedVideoIds.has(resolvedYoutubeId));
 
             return (
               <Card
@@ -801,10 +789,17 @@ export default function DeveloperVideoCatalogPage() {
                     onClick={() => setSelectedVideo(video)}
                   >
                     <img
-                      src={video.thumbnailUrl}
+                      src={resolvedThumbnailProxy}
                       alt={video.title}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => { e.currentTarget.style.opacity = '0.2'; }}
+                      onError={(e) => {
+                        if (resolvedYoutubeId && !e.currentTarget.dataset.fallbackTried) {
+                          e.currentTarget.dataset.fallbackTried = '1';
+                          e.currentTarget.src = `/api/media/thumbnail?url=${encodeURIComponent(`https://i.ytimg.com/vi/${resolvedYoutubeId}/default.jpg`)}`;
+                          return;
+                        }
+                        e.currentTarget.style.opacity = '0.2';
+                      }}
                     />
                   </div>
 
@@ -819,8 +814,8 @@ export default function DeveloperVideoCatalogPage() {
                       {video.source}
                     </Badge>
                     <Text size="xs" c="dimmed">{formatRelativeTime(video.publishedAt)}</Text>
-                    {video.durationLabel && (
-                      <Badge size="xs" color="blue" variant="light">{video.durationLabel}</Badge>
+                    {resolvedDurationLabel && (
+                      <Badge size="xs" color="blue" variant="light">{resolvedDurationLabel}</Badge>
                     )}
                     {meta.tag && (
                       <Badge size="xs" color={tagColor} variant="light">{meta.tag}</Badge>
@@ -867,10 +862,23 @@ export default function DeveloperVideoCatalogPage() {
                     <Button size="xs" variant="light" color="cyan" onClick={() => setSelectedVideo(video)}>
                       Preview
                     </Button>
-                    {video.youtubeId && (
-                      <Tooltip label="Add to download queue">
-                        <ActionIcon size="sm" variant="subtle" color="green" onClick={() => handleEnqueueOne(video)}>
-                          <IconDownload size={14} />
+                    {resolvedYoutubeId && (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color={alreadyDownloaded ? 'teal' : 'green'}
+                        leftSection={<IconDownload size={12} />}
+                        onClick={() => handleManualDownloadOne(video)}
+                        loading={downloadingVideoId === resolvedYoutubeId}
+                        disabled={Boolean(downloadingVideoId) && downloadingVideoId !== resolvedYoutubeId}
+                      >
+                        {alreadyDownloaded ? 'Download Again' : 'Download Now'}
+                      </Button>
+                    )}
+                    {resolvedYoutubeId && alreadyDownloaded && (
+                      <Tooltip label="Already downloaded to destination folder">
+                        <ActionIcon size="sm" variant="subtle" color="teal" disabled>
+                          <IconCheck size={14} />
                         </ActionIcon>
                       </Tooltip>
                     )}
@@ -927,8 +935,15 @@ export default function DeveloperVideoCatalogPage() {
                 w={180}
               />
               {selectedVideo.youtubeId && (
-                <Button size="sm" variant="light" color="green" leftSection={<IconDownload size={14} />} onClick={() => { handleEnqueueOne(selectedVideo); setSelectedVideo(null); }}>
-                  Queue for Download
+                <Button
+                  size="sm"
+                  variant="light"
+                  color="green"
+                  leftSection={<IconDownload size={14} />}
+                  onClick={() => { handleManualDownloadOne(selectedVideo); setSelectedVideo(null); }}
+                  loading={downloadingVideoId === selectedVideo.youtubeId}
+                >
+                  Download Now
                 </Button>
               )}
             </Group>

@@ -32,6 +32,7 @@ import {
   SEQUENCE_LIBRARY_KEY,
 } from '../streamer/sequenceLibrary';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const METHOD_VISIBILITY_KEY = 'streamerops.sequenceMethodVisibility.v1';
 const BROWSER_FFMPEG_LOAD_TIMEOUT_MS = 45000;
@@ -354,6 +355,11 @@ function ItemPreview({ item }) {
 }
 
 export default function StreamerSequenceBuilderPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST04" />Sequence Builder</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const blobUrls = useRef([]);
   const ffmpegWasmRef = useRef(null);
   const browserOutputUrlRef = useRef('');
@@ -1587,12 +1593,9 @@ export default function StreamerSequenceBuilderPage() {
       />
 
       <Stack gap="lg">
-        <div>
-          <Title order={2}><DevTag tag="ST04" />Sequence Builder</Title>
-          <Text c="dimmed" mt="xs">
-            Assemble ship PNG transitions and videos into a sequence. Use the file picker for browser preview, or type a path for export scripts.
-          </Text>
-        </div>
+        <Text c="dimmed">
+          Assemble ship PNG transitions and videos into a sequence. Use the file picker for browser preview, or type a path for export scripts.
+        </Text>
 
         {/* Sequence persistence */}
         <Card withBorder p="md" style={{ borderColor: 'rgba(76, 201, 240, 0.35)' }}>

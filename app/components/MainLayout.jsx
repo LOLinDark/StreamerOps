@@ -1,14 +1,22 @@
 import { Outlet } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Container } from '@mantine/core';
 import AppHeader from './AppHeader';
 import AerobookBar from './AerobookBar';
 import DeveloperNotes from './DeveloperNotes';
 import { trackAppView } from '../platform-core';
+import { PageTitleProvider } from '../contexts/PageTitleContext';
+import { getAutoPageTitle } from '../utils/pageTitle';
 
 export default function MainLayout() {
   const location = useLocation();
+  const [pageTitle, setPageTitle] = useState(null);
+  const autoPageTitle = getAutoPageTitle(location.pathname);
+
+  useEffect(() => {
+    setPageTitle(null);
+  }, [location.pathname]);
 
   console.log('[OmniCore] MainLayout rendered for path:', location.pathname);
 
@@ -18,9 +26,9 @@ export default function MainLayout() {
   }, [location.pathname, location.search]);
 
   return (
+    <PageTitleProvider value={{ setPageTitle }}>
     <div style={{ minHeight: '100vh', background: 'var(--oc-space-deep)', position: 'relative' }}>
-      {/* Header */}
-      <AppHeader />
+      <AppHeader pageTitle={pageTitle || autoPageTitle} />
 
       {/* Aerobook/Bookmarks Bar */}
       <AerobookBar />
@@ -47,5 +55,6 @@ export default function MainLayout() {
         <Outlet />
       </Container>
     </div>
+    </PageTitleProvider>
   );
 }

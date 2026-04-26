@@ -17,10 +17,12 @@ import {
 import { IconAlertCircle, IconDownload, IconPhoto, IconSparkles, IconWand } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const API_KEY_STORAGE = 'streamerops.clipdropApiKey';
 
 export default function StreamerBackgroundRemovalPage() {
+  const { setPageTitle } = usePageTitle();
   const [apiKey, setApiKey] = useState('');
   const [rememberKey, setRememberKey] = useState(false);
   const [transparencyHandling, setTransparencyHandling] = useState('return_input_if_non_opaque');
@@ -59,6 +61,11 @@ export default function StreamerBackgroundRemovalPage() {
       if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST06" />Ship PNG Cutout</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
 
   function onPickFile(event) {
     const file = event.target.files?.[0] || null;
@@ -159,12 +166,9 @@ export default function StreamerBackgroundRemovalPage() {
   return (
     <Container size="lg" py="md">
       <Stack gap="lg">
-        <div>
-          <Title order={2}><DevTag tag="ST06" />Ship PNG Cutout</Title>
-          <Text c="dimmed" mt="xs">
-            Remove image backgrounds using Clipdrop. You get 100 free development credits, then you need paid credits.
-          </Text>
-        </div>
+        <Text c="dimmed">
+          Remove image backgrounds using Clipdrop. You get 100 free development credits, then you need paid credits.
+        </Text>
 
         <Card withBorder>
           <Stack gap="md">

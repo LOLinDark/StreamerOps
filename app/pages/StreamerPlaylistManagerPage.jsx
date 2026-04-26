@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActionIcon, Badge, Button, Card, Container, Group, Stack, Table, Text, Title, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Button, Card, Container, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
 import DevTag from '../components/DevTag';
 import { IconAlertTriangle, IconFolderCheck, IconPlayerPlay, IconRefresh, IconTrash, IconVideo } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { restoreStoredDirectoryEntries, supportsStoredDirectoryHandles } from '../streamer/directoryHandles';
 import {
   analyzeSequenceHealth,
@@ -124,6 +125,12 @@ function getRecordIntegrity(entry) {
 
 export default function StreamerPlaylistManagerPage() {
   const navigate = useNavigate();
+  const { setPageTitle } = usePageTitle();
+
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST02" />Playlist Manager</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [savedSequences, setSavedSequences] = useState([]);
   const [restoredImageEntries, setRestoredImageEntries] = useState([]);
   const [restoredVideoEntries, setRestoredVideoEntries] = useState([]);
@@ -265,12 +272,9 @@ export default function StreamerPlaylistManagerPage() {
   return (
     <Container size="lg" py="md">
       <Stack gap="lg">
-        <div>
-          <Title order={2}><DevTag tag="ST02" />Playlist Manager</Title>
-          <Text c="dimmed" mt="xs">
-            Review saved sequences, confirm whether their media still resolves, and reopen any playlist in Sequence Builder.
-          </Text>
-        </div>
+        <Text c="dimmed">
+          Review saved sequences, confirm whether their media still resolves, and reopen any playlist in Sequence Builder.
+        </Text>
 
         <Card withBorder p="md" style={{ borderColor: 'rgba(76, 201, 240, 0.35)' }}>
           <Stack gap="sm">

@@ -234,7 +234,13 @@ export const routeConfig = {
       color: 'pink',
     },
     {
-      label: '[OV05] /overlays/star-citizen-control (Quick Controls)',
+      label: '[OV05] /overlays/window/star-citizen-source-capture',
+      path: '/overlays/window/star-citizen-source-capture',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV06] /overlays/star-citizen-control (Quick Controls)',
       path: '/overlays/star-citizen-control',
       category: 'Overlays Studio',
       color: 'pink',
