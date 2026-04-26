@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Group, Stack, Text } from '@mantine/core';
+import { Group, Stack, Text } from '@mantine/core';
 import {
   getQuickPlayoutTemplate,
   QUICK_PLAYOUT_CONTROL_CHANNEL,
@@ -837,11 +837,16 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
     window.addEventListener('pointerdown', tryUnmute, { passive: true });
     window.addEventListener('keydown', tryUnmute);
 
+    // Keep retrying unmute while live playback is running so browser-source output
+    // can recover audio without requiring manual interaction overlays.
+    const retryTimer = window.setInterval(tryUnmute, 1500);
+
     return () => {
+      window.clearInterval(retryTimer);
       window.removeEventListener('pointerdown', tryUnmute);
       window.removeEventListener('keydown', tryUnmute);
     };
-  }, [audioBlocked, forceMute]);
+  }, [audioBlocked, forceMute, isPlaying, index]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -1049,21 +1054,6 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
           ) : (
             <Group justify="center" align="center" style={{ height: '100%' }}>
               <Text c="gray.5">No media configured for this template.</Text>
-            </Group>
-          )}
-
-          {audioBlocked && (
-            <Group
-              justify="center"
-              align="center"
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'rgba(0, 0, 0, 0.35)',
-                pointerEvents: 'none',
-              }}
-            >
-              <Badge color="yellow" variant="filled">Click once to enable sound</Badge>
             </Group>
           )}
 

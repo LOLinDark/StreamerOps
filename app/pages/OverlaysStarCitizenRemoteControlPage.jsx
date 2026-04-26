@@ -17,6 +17,7 @@ const OVERLAY_CONTROL_API = '/api/overlays/star-citizen/control';
 const OVERLAY_STATE_API = '/api/overlays/star-citizen/state';
 const STAR_CITIZEN_LEFT_LOGO = '/assets/images/star-citizen/starcitizen-logo-white.png';
 const STAR_CITIZEN_RIGHT_LOGO = '/assets/images/star-citizen/MadeByTheCommunity_White.png';
+const SYNC_STALE_MS = 6000;
 const DEFAULT_PRESETS = [
   {
     name: 'Broadcast',
@@ -194,6 +195,19 @@ function reconcileLivePlaylist(prev, incoming) {
   return [...previous, ...additions];
 }
 
+function formatAgeLabel(timestampMs) {
+  const value = Number(timestampMs) || 0;
+  if (!value) return 'never';
+  const ageSec = Math.max(0, Math.round((Date.now() - value) / 1000));
+  return `${ageSec}s ago`;
+}
+
+function isVisibilityEqual(left, right) {
+  return Boolean(left?.header) === Boolean(right?.header)
+    && Boolean(left?.hint) === Boolean(right?.hint)
+    && Boolean(left?.disclaimer) === Boolean(right?.disclaimer);
+}
+
 export default function OverlaysStarCitizenRemoteControlPage() {
   const template = useMemo(() => getQuickPlayoutTemplate(TEMPLATE_ID), []);
   const templatePlaylist = template.playlist || [];
@@ -216,6 +230,17 @@ export default function OverlaysStarCitizenRemoteControlPage() {
   const [presets, setPresets] = useState(loadSavedPresets);
   const [selectedPresetName, setSelectedPresetName] = useState(loadLastPresetName);
   const [newPresetName, setNewPresetName] = useState('My Preset');
+  const [diagnostics, setDiagnostics] = useState({
+    lastSnapshotPublishAt: 0,
+    stateReachable: false,
+    stateLastSeenAt: 0,
+    snapshotUpdatedAtMs: 0,
+    snapshotMatchesRemote: false,
+    relayReachable: false,
+    relayLastSeenAt: 0,
+    relayLastSeq: 0,
+    lastDiagnosticsError: '',
+  });
   const { currentTip } = useRotatingTips(getHelpTips('overlaysRemote'), 10000);
 
   const videoRef = useRef(null);
@@ -238,6 +263,8 @@ export default function OverlaysStarCitizenRemoteControlPage() {
   // transient commands, it publishes a durable snapshot so source-capture can
   // recover after refreshes, missed polls, or a Streamlabs browser-source reload.
   useEffect(() => {
+    const publishedAt = Date.now();
+    setDiagnostics((prev) => ({ ...prev, lastSnapshotPublishAt: publishedAt }));
     publishStateSnapshot({
       index,
       isPlaying,
@@ -248,7 +275,7 @@ export default function OverlaysStarCitizenRemoteControlPage() {
       playlistLength: playlist.length,
       currentId: String(current?.id || ''),
       currentSource: String(current?.source || ''),
-      sentAt: new Date().toISOString(),
+      sentAt: new Date(publishedAt).toISOString(),
     });
   }, [
     closeGuardEnabled,
@@ -261,6 +288,110 @@ export default function OverlaysStarCitizenRemoteControlPage() {
     playlist.length,
     stageMode,
   ]);
+
+  useEffect(() => {
+    let active = true;
+
+    const pollDiagnostics = async () => {
+      let stateUpdate = {};
+      let relayUpdate = {};
+
+      try {
+        const response = await fetch(OVERLAY_STATE_API, { cache: 'no-store' });
+        if (response.ok) {
+          const payload = await response.json();
+          const snapshot = payload?.snapshot && typeof payload.snapshot === 'object' ? payload.snapshot : null;
+          const updatedAtMs = Date.parse(String(payload?.updatedAt || ''));
+          const currentId = String(current?.id || '').trim();
+          const currentSource = normalizeMediaSource(current?.source || '');
+
+          const snapshotMatchesRemote = Boolean(snapshot) && (
+            Number(snapshot?.index) === Number(index)
+            && Boolean(snapshot?.isPlaying) === Boolean(isPlaying)
+            && Boolean(snapshot?.isLooping) === Boolean(isLooping)
+            && String(snapshot?.stageMode || '') === String(stageMode)
+            && isVisibilityEqual(snapshot?.elementVisibility, elementVisibility)
+            && String(snapshot?.currentId || '').trim() === currentId
+            && normalizeMediaSource(snapshot?.currentSource || '') === currentSource
+          );
+
+          stateUpdate = {
+            stateReachable: true,
+            stateLastSeenAt: Date.now(),
+            snapshotUpdatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : 0,
+            snapshotMatchesRemote,
+            lastDiagnosticsError: '',
+          };
+        } else {
+          stateUpdate = {
+            stateReachable: false,
+            lastDiagnosticsError: `state api status ${response.status}`,
+          };
+        }
+      } catch {
+        stateUpdate = {
+          stateReachable: false,
+          lastDiagnosticsError: 'state api unreachable',
+        };
+      }
+
+      try {
+        const response = await fetch(`${OVERLAY_CONTROL_API}?after=0`, { cache: 'no-store' });
+        if (response.ok) {
+          const payload = await response.json();
+          const events = Array.isArray(payload?.events) ? payload.events : [];
+          const relayLastSeq = events.reduce((max, entry) => {
+            const seq = Number(entry?.seq) || 0;
+            return seq > max ? seq : max;
+          }, 0);
+
+          relayUpdate = {
+            relayReachable: true,
+            relayLastSeenAt: Date.now(),
+            relayLastSeq,
+          };
+        } else {
+          relayUpdate = {
+            relayReachable: false,
+          };
+        }
+      } catch {
+        relayUpdate = {
+          relayReachable: false,
+        };
+      }
+
+      if (!active) return;
+      setDiagnostics((prev) => ({
+        ...prev,
+        ...stateUpdate,
+        ...relayUpdate,
+      }));
+    };
+
+    pollDiagnostics();
+    const timer = setInterval(pollDiagnostics, 2000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [
+    current?.id,
+    current?.source,
+    elementVisibility,
+    index,
+    isLooping,
+    isPlaying,
+    stageMode,
+  ]);
+
+  const stateFresh = diagnostics.snapshotUpdatedAtMs > 0
+    ? (Date.now() - diagnostics.snapshotUpdatedAtMs) <= SYNC_STALE_MS
+    : false;
+  const relayFresh = diagnostics.relayLastSeenAt > 0
+    ? (Date.now() - diagnostics.relayLastSeenAt) <= SYNC_STALE_MS
+    : false;
+  const inferredWindowConvergence = diagnostics.snapshotMatchesRemote && stateFresh && relayFresh;
 
   useEffect(() => {
     let active = true;
@@ -1059,6 +1190,46 @@ export default function OverlaysStarCitizenRemoteControlPage() {
           </Text>
         </Group>
       )}
+
+      <div
+        style={{
+          borderTop: `1px solid ${template.theme.border}`,
+          padding: '12px 16px 16px',
+          background: 'rgba(1, 12, 26, 0.75)',
+        }}
+      >
+        <Stack gap={6}>
+          <Text fw={700} size="sm">Sync Diagnostics (Remote + Capture + Playout + Streamlabs)</Text>
+          <Group gap="xs">
+            <Badge color={diagnostics.stateReachable ? 'teal' : 'red'} variant="light">
+              State API: {diagnostics.stateReachable ? 'Reachable' : 'Down'}
+            </Badge>
+            <Badge color={relayFresh ? 'teal' : 'yellow'} variant="light">
+              Relay Bus: {relayFresh ? 'Fresh' : 'Stale'}
+            </Badge>
+            <Badge color={diagnostics.snapshotMatchesRemote ? 'teal' : 'yellow'} variant="light">
+              Remote vs Snapshot: {diagnostics.snapshotMatchesRemote ? 'Aligned' : 'Drifting'}
+            </Badge>
+            <Badge color={inferredWindowConvergence ? 'teal' : 'yellow'} variant="light">
+              Capture/Playout Convergence: {inferredWindowConvergence ? 'Healthy' : 'Needs Attention'}
+            </Badge>
+          </Group>
+
+          <Text size="xs" c="rgba(216,243,255,0.78)">
+            Snapshot published: {formatAgeLabel(diagnostics.lastSnapshotPublishAt)} | Snapshot updated: {formatAgeLabel(diagnostics.snapshotUpdatedAtMs)} | Relay heartbeat: {formatAgeLabel(diagnostics.relayLastSeenAt)} | Relay seq: {diagnostics.relayLastSeq}
+          </Text>
+
+          <Text size="xs" c="rgba(216,243,255,0.78)">
+            Streamlabs readback: Not directly available from this page yet. Current status is inferred from relay + snapshot health rather than a direct "what is live right now" API response.
+          </Text>
+
+          {diagnostics.lastDiagnosticsError && (
+            <Text size="xs" c="#ffb3b3">
+              Last diagnostics error: {diagnostics.lastDiagnosticsError}
+            </Text>
+          )}
+        </Stack>
+      </div>
     </div>
   );
 }
