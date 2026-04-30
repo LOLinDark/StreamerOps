@@ -1,6 +1,7 @@
 import { Badge, Card, Container, Group, SimpleGrid, Stack, Text } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { apiGet } from '../core/api/client';
 import { SciFiFrame } from '../components/ui';
 
@@ -67,6 +68,11 @@ const readinessChecklist = [
 ];
 
 export default function StatusViewPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT04" />Status View</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [apiState, setApiState] = useState({ ok: false, version: '', error: '' });
 
   useEffect(() => {
@@ -101,10 +107,7 @@ export default function StatusViewPage() {
     <Container size="xl" py="xl">
       <Stack gap="xl">
         <div>
-          <Text className="scifi-heading" style={{ margin: 0, fontSize: '2rem' }}>
-            <DevTag tag="GT04" /> Status View
-          </Text>
-          <Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '0.5rem' }}>
+<Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '0.5rem' }}>
             Stream stack readiness for local OBS, VLC, overlays, and launch workflow
           </Text>
         </div>

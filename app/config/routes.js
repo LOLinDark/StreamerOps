@@ -200,6 +200,12 @@ export const routeConfig = {
       category: 'Streamer',
       color: 'violet',
     },
+    {
+      label: '[ST04] /streamer/wizard-1b',
+      path: '/streamer/wizard-1b',
+      category: 'Streamer',
+      color: 'violet',
+    },
   ],
 
   overlays: [
@@ -242,6 +248,12 @@ export const routeConfig = {
     {
       label: '[OV06] /overlays/star-citizen-control (Quick Controls)',
       path: '/overlays/star-citizen-control',
+      category: 'Overlays Studio',
+      color: 'pink',
+    },
+    {
+      label: '[OV07] /overlays/wizard-1b (Capability Wizard)',
+      path: '/overlays/wizard-1b',
       category: 'Overlays Studio',
       color: 'pink',
     },

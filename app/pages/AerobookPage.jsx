@@ -26,6 +26,7 @@ import { addLiveFollow, fetchLiveFollows, fetchOfficialLive, removeLiveFollow } 
 import { createLogger } from '../core/debug/logger';
 import { formatRelativeTime } from '../utils/time';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const logger = createLogger('page.aerobook');
 
@@ -44,6 +45,11 @@ function resolveInitialTab(search) {
 }
 
 export default function AerobookPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="APP02" />Aerobook</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const location = useLocation();
   const [selectedPost, setSelectedPost] = useState(null);
   const [activeTab, setActiveTab] = useState(resolveInitialTab(location.search));
@@ -256,10 +262,7 @@ export default function AerobookPage() {
         <Stack gap="md" mb="xl">
           <div>
             <Group gap="sm" mb="xs">
-              <Text size="xl" fw={700} style={{ color: '#00d9ff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                <DevTag tag="APP02" />📸 Aerobook
-              </Text>
-              <Badge color="cyan" variant="light">
+<Badge color="cyan" variant="light">
                 {feedSource === 'cache' ? 'Cached Feed' : 'Live Feed'}
               </Badge>
               <Badge color="green" variant="light">

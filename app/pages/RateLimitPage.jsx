@@ -2,8 +2,14 @@ import { Container, Title, Card, Text, Stack, Group, Badge, Progress, Alert, Tim
 import { useState, useEffect } from 'react';
 import { apiGet, appendErrorLog } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function RateLimitPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM07" />Rate Limit Monitor</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [limits, setLimits] = useState(null);
   const [notification, setNotification] = useState(null);
 
@@ -46,9 +52,7 @@ export default function RateLimitPage() {
 
   return (
     <Container size="lg">
-      <Title mb="md"><DevTag tag="ADM07" />Rate Limit Monitor</Title>
-      
-      {notification && (
+{notification && (
         <Alert color={notification.type === 'error' ? 'red' : 'orange'} mb="md" title={notification.type === 'error' ? 'Blocked' : 'Warning'}>
           {notification.message}
         </Alert>

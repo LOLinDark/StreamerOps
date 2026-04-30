@@ -2,8 +2,14 @@ import { Container, Title, Card, Text, Stack, Button, Badge, Code, Group } from 
 import { useState, useEffect } from 'react';
 import { clearErrorLog, getErrorLog } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function ErrorLogPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV04" />Error Log</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [errors, setErrors] = useState([]);
 
   useEffect(() => {
@@ -22,8 +28,7 @@ export default function ErrorLogPage() {
   return (
     <Container size="lg" py="xl">
       <Group justify="space-between" mb="xl">
-        <Title order={1}><DevTag tag="DEV04" />Error Log</Title>
-        <Group>
+<Group>
           <Button onClick={loadErrors} variant="outline">Refresh</Button>
           <Button onClick={clearErrors} color="red">Clear All</Button>
         </Group>

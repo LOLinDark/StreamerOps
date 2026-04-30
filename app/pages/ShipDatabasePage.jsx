@@ -29,6 +29,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { fetchShips, getCachedShips, warmShipsImageCache } from '../core/api/providers/ships';
 import { ROLES, getRoles } from '../data/shipRoles';
 import { getShipPricing, fmtPledgeUSD, fmtAUEC } from '../data/shipPricing';
@@ -405,6 +406,11 @@ const ALL_COLS = [
 const DEFAULT_VISIBLE = new Set(['name', 'mfr', 'role', 'size', 'crew', 'cargo', 'scm', 'status', 'expand']);
 
 export default function ShipDatabasePage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT05" />Ship Database</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [ships, setShips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -617,10 +623,7 @@ export default function ShipDatabasePage() {
           <Stack gap="xl">
             {/* Header */}
             <div>
-              <h1 style={{ margin: '0 0 0.25rem 0', fontSize: '2rem', color: '#e8eaf0' }}>
-                <DevTag tag="GT05" />Ship Database
-              </h1>
-              <Text c="dimmed" size="sm">
+<Text c="dimmed" size="sm">
                 Explore specifications, lore, and performance data for every vessel in the verse
               </Text>
             </div>

@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { useState } from "react";
 import { Badge, Button, Card, Container, Grid, Group, ScrollArea, Stack, Table, Tabs, Text, TextInput, Title, Select } from "@mantine/core";
 import { IconChevronLeft, IconRefresh, IconTrendingUp } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import DevTag from "../components/DevTag";
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 // Mock data: Commodities
 const COMMODITIES = [
@@ -34,6 +36,11 @@ const MINING_ORES = [
 ];
 
 export default function EconomyTrackerPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT03" />Economy Tracker</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
   const [selectedTab, setSelectedTab] = useState("prices");
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,10 +76,7 @@ export default function EconomyTrackerPage() {
         {/* Header */}
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <div>
-            <Title order={1} style={{ marginBottom: 6 }}>
-              <DevTag tag="GT03" /> Economy Tracker
-            </Title>
-            <Text c="dimmed" size="sm">
+<Text c="dimmed" size="sm">
               Monitor commodity prices and optimize your profits
             </Text>
           </div>

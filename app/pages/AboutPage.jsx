@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Container, Stack, Text, Anchor, Table } from '@mantine/core';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const DEPENDENCIES = [
   { name: 'Arwes', author: 'Romel Pérez', url: 'https://github.com/arwes/arwes', license: 'MIT', desc: 'Futuristic Sci-Fi UI Web Framework — frames, text effects, backgrounds' },
@@ -13,14 +15,16 @@ const DEPENDENCIES = [
 ];
 
 export default function AboutPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM05" />About</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   return (
     <Container size="xl" py="xl">
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
-        <h1 className="scifi-heading" style={{ marginBottom: '0.5rem', fontSize: '2.5rem' }}>
-          <DevTag tag="ADM05" />About OMNI-CORE
-        </h1>
-        <Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+<Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>
           Citizen Operations & Intelligence Network
         </Text>
       </div>

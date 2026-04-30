@@ -28,6 +28,7 @@ import { registerMediaRoutes } from './api/media/index.js';
 import { registerImageRoutes } from './api/images/index.js';
 import { registerShipRoutes } from './api/ships/index.js';
 import { registerVersemailRoutes } from './api/versemail/index.js';
+import { registerObsRoutes } from './api/obs/index.js';
 import { registerHotasModeRoutes } from './peripherals/hotas/index.js';
 import { registerDownloadRoutes } from './api/dev/download/index.js';
 
@@ -1162,6 +1163,7 @@ registerMediaRoutes(app);
 registerImageRoutes(app);
 registerShipRoutes(app);
 registerVersemailRoutes(app);
+registerObsRoutes(app);
 registerHotasModeRoutes(app);
 registerDownloadRoutes(app);
 

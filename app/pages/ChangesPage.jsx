@@ -1,11 +1,17 @@
+import { useEffect } from 'react';
 import { Container, Title, Timeline, Text, Badge, Paper, Stack } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function ChangesPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV05" />Changelog</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   return (
     <Container size="lg" py="xl">
-      <Title order={1} mb="xl"><DevTag tag="DEV05" />Changelog</Title>
-      <Timeline active={0} bulletSize={24} lineWidth={2}>
+<Timeline active={0} bulletSize={24} lineWidth={2}>
         <Timeline.Item title="Alpha V0.1.0" bullet={<Badge size="sm">Latest</Badge>}>
           <Text c="dimmed" size="sm">Initial OMNI-CORE Setup</Text>
           <Paper p="md" mt="sm" withBorder>

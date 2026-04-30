@@ -1,8 +1,9 @@
 import { Container, Title, Textarea, Button, Stack, Text, Card, Group } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useState } from 'react';
+import { useState , useEffect } from 'react';
 import { readJsonStorage, writeJsonStorage } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const DEFAULT_RULES = {
   general: `You are an assistant for OMNI-CORE, a Star Citizen companion dashboard. Be concise, informative, and use in-verse terminology where appropriate.`,
@@ -11,6 +12,11 @@ const DEFAULT_RULES = {
 };
 
 export default function AIRulesPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM03" />AI Rules</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [rules, setRules] = useState(() => {
     return readJsonStorage('aiRules', DEFAULT_RULES);
   });
@@ -29,8 +35,7 @@ export default function AIRulesPage() {
 
   return (
     <Container size="lg">
-      <Title mb="md"><DevTag tag="ADM03" />AI Rules Configuration</Title>
-      <Text size="sm" c="dimmed" mb="lg">
+<Text size="sm" c="dimmed" mb="lg">
         Configure the system instructions sent to AI models across OMNI-CORE.
       </Text>
       <Stack gap="lg">

@@ -118,6 +118,9 @@ export default function OverlaysStarCitizenControlPage() {
               <Button variant="light" color="grape" onClick={() => openSourceCaptureWindow()}>
                 Open Source Capture Window
               </Button>
+              <Button variant="light" color="violet" onClick={() => window.open('/overlays/wizard-1b', '_blank', 'noopener,noreferrer')}>
+                Open Wizard 1B
+              </Button>
               <Button variant="light" onClick={() => window.open('/overlays/window/star-citizen-remote-control', '_blank', 'noopener,noreferrer')}>
                 Open Star Citizen Remote Control
               </Button>

@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { getAssetUrl } from '../utils/pathUtils';
 
 // ═══════════════════════════════════════════════════════════════
@@ -395,6 +396,11 @@ const ToolCard = ({ tool }) => {
 };
 
 export default function MainDashboardPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="APP01" />Verse Operations Hub</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   console.log('[OmniCore] MainDashboardPage rendered');
   // Evaluate TOOLS array at component render time (not module scope)
   const TOOLS = useMemo(() => getToolsArray(), []);
@@ -403,10 +409,7 @@ export default function MainDashboardPage() {
     <Container size="xl" py="xl">
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
-        <h1 className="scifi-heading" style={{ marginBottom: '0.5rem', fontSize: '2rem', margin: 0 }}>
-          <DevTag tag="APP01" />StreamerOps Control Deck
-        </h1>
-        <Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '0.5rem' }}>
+<Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '0.5rem' }}>
           Launch streams, monitor systems, and manage creator workflows
         </Text>
       </div>

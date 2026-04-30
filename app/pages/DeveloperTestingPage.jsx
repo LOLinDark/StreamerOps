@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, Container, Group, Stack, Text, TextInput, Title } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import { restoreStoredDirectoryEntries, supportsStoredDirectoryHandles } from '../streamer/directoryHandles';
 
 const SEQUENCE_LIBRARY_KEY = 'streamerops.sequenceLibrary.v1';
@@ -147,6 +148,11 @@ async function resolveSourceToPlayableUrl(source) {
 }
 
 export default function DeveloperTestingPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV09" />Testing Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const initial = useMemo(() => pickFirstVideoFromLibrary(), []);
   const [videoSource, setVideoSource] = useState(initial.source);
   const [playableSource, setPlayableSource] = useState('');
@@ -298,12 +304,7 @@ export default function DeveloperTestingPage() {
   return (
     <Container size="lg">
       <Stack gap="md">
-        <Title>
-          <DevTag tag="DEV09" />
-          Developer Testing - Star Citizen Video Probe
-        </Title>
-
-        <Card withBorder>
+<Card withBorder>
           <Stack gap="sm">
             <Group gap="xs" wrap="wrap">
               <Badge variant="light" color="cyan">Isolated Video Test</Badge>

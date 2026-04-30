@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState , useEffect } from 'react';
 import { Badge, Box, Button, Card, Group, Select, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const roleOptions = [
   { value: 'pilot', label: 'Pilot' },
@@ -25,6 +26,11 @@ const modeOptions = [
 ];
 
 export default function DeveloperHotasProfileMatrixLabPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="HC07" />Profile Matrix Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [role, setRole] = useState('pilot');
   const [shipClass, setShipClass] = useState('fighter');
   const [activeMode, setActiveMode] = useState('green');
@@ -36,8 +42,7 @@ export default function DeveloperHotasProfileMatrixLabPage() {
   return (
     <Stack gap="lg">
       <div>
-        <Title order={2}><DevTag tag="HC07" />Profile Matrix Lab (Phase 4)</Title>
-        <Text c="dimmed" mt={4}>
+<Text c="dimmed" mt={4}>
           Developer test surface for role + ship + mode profile generation and instant XML apply workflows.
         </Text>
         <Group gap="xs" mt="xs">

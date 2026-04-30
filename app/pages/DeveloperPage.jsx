@@ -1,8 +1,15 @@
+import { useEffect } from 'react';
 import { Container, Title, Card, Text, Stack, Badge, Group, Button } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function DeveloperPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV01" />Developer Tools</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
 
   const adminTools = [
@@ -19,12 +26,7 @@ export default function DeveloperPage() {
 
   return (
     <Container size="lg">
-      <Title mb="md">
-        <DevTag tag="DEV01" />
-        Developer Tools
-      </Title>
-      
-      <Stack gap="md">
+<Stack gap="md">
         <Card withBorder>
           <Group justify="space-between" mb="sm">
             <Title order={3}>Environment</Title>
@@ -34,11 +36,7 @@ export default function DeveloperPage() {
         </Card>
 
         <Card withBorder>
-          <Title order={3} mb="sm">
-            <DevTag tag="DEV01.1" />
-            Admin Tools
-          </Title>
-          <Stack gap="xs">
+<Stack gap="xs">
             {adminTools.map((tool) => (
               <Group key={tool.path} justify="space-between" wrap="nowrap">
                 <div>

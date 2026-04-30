@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   Container,
   Stack,
@@ -21,6 +22,7 @@ import {
   LogitechX52Device,
 } from '../../libraries/hotas/index.js';
 import DevTag from '../../components/DevTag';
+import { usePageTitle } from '../../contexts/PageTitleContext';
 
 // Build a unified lookup map matching the old X52_BUTTONS shape so the JSX
 // below can continue using X52_BUTTONS[index] and X52_BUTTONS[`${i}-axis`]
@@ -44,6 +46,11 @@ const X52_LOOKUP = { ...X52_BUTTONS, ...AXIS_COMPAT, ...POV_HAT_COMPAT };
 const getDisplayButtonNumber = (btnIndex) => X52_LOOKUP[btnIndex]?.windowsIndex ?? (btnIndex + 1);
 
 export default function HOTASTestPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="HC-TEST" />HOTAS Input Test Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const {
     gamepadConnected,
     gamepadInfo,
@@ -87,19 +94,7 @@ export default function HOTASTestPage() {
         <Stack gap="xl">
           {/* Title */}
           <div style={{ textAlign: 'center' }}>
-            <Text
-              size="xl"
-              fw={700}
-              style={{
-                color: '#00d9ff',
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                marginBottom: '0.5rem',
-              }}
-            >
-              <DevTag tag="HC-TEST" />🎮 HOTAS Input Test Lab
-            </Text>
-            <Text size="sm" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+<Text size="sm" style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
               Real-time detection and monitoring of HOTAS devices (Logitech X52)
             </Text>
           </div>

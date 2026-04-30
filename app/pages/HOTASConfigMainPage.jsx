@@ -22,8 +22,14 @@ import { StarCitizenProfileParser } from '../utils/starCitizenProfileParser';
 import { featureToStarCitizenAction, parseInputString, formatInputForDisplay } from '../utils/starCitizenActionMap';
 import { useHotasInput, LogitechX52Device } from '../libraries/hotas';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function HOTASConfigMainPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="HC05" />Technology Config</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const CAPTURE_WINDOW_MS = 3000;
 
   const [selectedProfile, setSelectedProfile] = useState('');
@@ -994,8 +1000,7 @@ export default function HOTASConfigMainPage() {
         <Stack gap="xl">
           {/* Header */}
           <div>
-            <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2rem' }}><DevTag tag="HC05" />Technology Config</h1>
-            {profileName && (
+{profileName && (
               <Text size="lg" fw={600} style={{ marginBottom: '0.5rem', color: '#1e90ff' }}>
                 {profileName}
               </Text>

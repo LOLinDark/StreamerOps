@@ -2,8 +2,14 @@ import { Container, Title, TextInput, Button, Paper, Text, Stack, Group, ActionI
 import { useState, useEffect, useCallback } from 'react';
 import { apiPost, appendErrorLog, useAppStore } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function GeminiPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM02" />Gemini Chat</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -81,9 +87,7 @@ export default function GeminiPage() {
 
   return (
     <Container size="lg">
-      <Title mb="md"><DevTag tag="ADM02" />Gemini Chat</Title>
-      
-      <Stack gap="md" mb="md" style={{ maxHeight: '500px', overflowY: 'auto' }}>
+<Stack gap="md" mb="md" style={{ maxHeight: '500px', overflowY: 'auto' }}>
         {messages.map((msg, i) => (
           <Paper key={i} p="md" bg={msg.role === 'user' ? 'blue.0' : msg.role === 'error' ? 'red.0' : 'gray.0'}>
             <Text fw={700}>{msg.role === 'user' ? 'You' : msg.role === 'error' ? 'Error' : 'Gemini'}</Text>

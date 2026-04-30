@@ -2,8 +2,14 @@ import { Container, Title, Card, Text, Stack, Group, Badge, Button, Select, Time
 import { useState, useEffect, useCallback } from 'react';
 import { historyManager } from '../utils/historyManager';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function HistoryPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM08" />Field History</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [documents, setDocuments] = useState([]);
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [history, setHistory] = useState({});
@@ -56,8 +62,7 @@ export default function HistoryPage() {
   return (
     <Container size="xl">
       <Group justify="space-between" mb="md">
-        <Title><DevTag tag="ADM08" />Field History</Title>
-        <Select
+<Select
           placeholder="Select document"
           value={selectedDoc}
           onChange={setSelectedDoc}

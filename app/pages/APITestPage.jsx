@@ -1,10 +1,16 @@
 import { Container, Stack, Button, TextInput, Group, Text, Badge, Card, Code, Tabs, Loader, Center, CopyButton, ActionIcon } from '@mantine/core';
-import { useState } from 'react';
+import { useState , useEffect } from 'react';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function APITestPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV03" />API Test Suite</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [citizenHandle, setCitizenHandle] = useState('LOLinDark');
   const [citizenData, setCitizenData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -75,8 +81,7 @@ export default function APITestPage() {
       <Stack gap="xl">
         {/* Header */}
         <div>
-          <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2rem' }}><DevTag tag="DEV03" />🧪 API Test Suite</h1>
-          <Text c="dimmed">Test all external and internal APIs</Text>
+<Text c="dimmed">Test all external and internal APIs</Text>
         </div>
 
         {/* Error Display */}

@@ -7,8 +7,14 @@ import ChecklistSection from '../components/ChecklistSection';
 import { onboardingChecklist, getTotalTaskCount } from '../data/onboardingChecklist';
 import { useOnboardingStore } from '../stores/useOnboardingStore';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function OnboardingChecklistPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="APP03" />Welcome to the Verse</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
   const { completedTasks, toggleTask, visitSection, getProgress, completeOnboarding, onboardingCompleted } =
     useOnboardingStore();
@@ -51,18 +57,7 @@ export default function OnboardingChecklistPage() {
             <Stack gap="md" p="lg">
               <Group justify="space-between" align="flex-start">
                 <Stack gap="xs">
-                  <Text
-                    size="xl"
-                    fw={700}
-                    style={{
-                      color: '#00d9ff',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.1em',
-                    }}
-                  >
-                    <DevTag tag="APP03" />🚀 Welcome to the Verse
-                  </Text>
-                  <Text size="sm" c="dimmed">
+<Text size="sm" c="dimmed">
                     Complete this orientation checklist to get the most out of your Star Citizen journey. Each section builds on the last.
                   </Text>
                 </Stack>

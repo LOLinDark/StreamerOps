@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { useState } from "react";
 import { Badge, Button, Card, Container, Grid, Group, ScrollArea, Stack, Table, Tabs, Text, Title, Select } from "@mantine/core";
 import { IconChevronLeft, IconRotateClockwise } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import DevTag from "../components/DevTag";
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 // Mock data: Ships
 const SHIPS_CATALOG = [
@@ -65,6 +67,11 @@ const ROLE_PRESETS = {
 };
 
 export default function LoadoutBuilderPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT02" />Loadout Builder</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
   const [selectedShip, setSelectedShip] = useState(SHIPS_CATALOG[0].id);
   const [selectedComponents, setSelectedComponents] = useState({});
@@ -121,10 +128,7 @@ export default function LoadoutBuilderPage() {
         {/* Header */}
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <div>
-            <Title order={1} style={{ marginBottom: 6 }}>
-              <DevTag tag="GT02" /> Loadout Builder
-            </Title>
-            <Text c="dimmed" size="sm">
+<Text c="dimmed" size="sm">
               Design your perfect ship configuration
             </Text>
           </div>

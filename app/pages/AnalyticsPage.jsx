@@ -13,8 +13,14 @@ import {
   getPerformanceSnapshot
 } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function AnalyticsPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM04" />Analytics Dashboard</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [usage, setUsage] = useState(null);
   const [pricing, setPricing] = useState(null);
   const [analyticsSummary, setAnalyticsSummary] = useState(null);
@@ -108,9 +114,7 @@ export default function AnalyticsPage() {
 
   return (
     <Container size="lg">
-      <Title mb="md"><DevTag tag="ADM04" />Analytics Dashboard</Title>
-      
-      <Stack gap="md">
+<Stack gap="md">
         <Card withBorder>
           <Title order={3} mb="md">Runtime Readiness</Title>
           <Group mb="md">

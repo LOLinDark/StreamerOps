@@ -15,6 +15,7 @@ import {
 import { IconAlertTriangle, IconMapPin, IconRoute, IconX } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import DevTag from "../components/DevTag";
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 // ─── Fallback topology (real SC systems, used when API is unreachable) ─────────
 const FALLBACK_SYSTEMS = [
@@ -348,6 +349,11 @@ function ProjectionPreview({ title, description, nodes, links, routeEdgeSet, rou
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function LocationGuidePage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT04" />Nav Charts</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [systems,       setSystems]       = useState([]);
   const [links,         setLinks]         = useState([]);
   const [origin,        setOrigin]        = useState("");
@@ -505,10 +511,7 @@ export default function LocationGuidePage() {
 
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <div>
-            <Title order={1} style={{ marginBottom: 6 }}>
-              <DevTag tag="GT04" />Nav Charts (Experimental)
-            </Title>
-            <Text c="dimmed" size="sm">
+<Text c="dimmed" size="sm">
               {systems.length} charted systems · {links.length} jump connections
               {" · "}experimental prototype
               {sourceMeta.fetchedAt ? <> · updated {new Date(sourceMeta.fetchedAt).toLocaleTimeString()}</> : null}

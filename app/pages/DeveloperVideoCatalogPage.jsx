@@ -29,6 +29,7 @@ import {
   IconCheck,
 } from '@tabler/icons-react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 import MediaPlayer from '../components/MediaPlayer';
 import { fetchAerobookFeed, getCachedAerobookFeed, fetchYoutubePlaylist } from '../core/api/providers/media';
 import { fetchYouTubeChannelVideos } from '../core/api/providers/youtube';
@@ -312,6 +313,11 @@ const FILTER_OPTIONS = [
 ];
 
 export default function DeveloperVideoCatalogPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV08" />Video Catalog</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [feed, setFeed] = useState(null);
   const [sourceVideos, setSourceVideos] = useState([]);
   const [sourceLoading, setSourceLoading] = useState(false);
@@ -619,10 +625,7 @@ export default function DeveloperVideoCatalogPage() {
         >
           <Stack gap="sm">
             <div>
-              <Text size="xl" fw={700}>
-                <DevTag tag="DEV08" />🎬 Followed YouTube + Twitch Videos
-              </Text>
-              <Text size="sm" c="dimmed">
+<Text size="sm" c="dimmed">
                 Track official Star Citizen sources plus your own followed YouTube and Twitch channels. Tag, review, preview, and manually download individual videos.
               </Text>
             </div>

@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const MAP_SYSTEMS = [
   { id: 'n1', name: 'NODE-01', x: 12, y: 22, confidence: 0.94 },
@@ -173,6 +174,11 @@ function clamp01(v) {
 }
 
 export default function DeveloperNavChartsLabPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV06" />Nav Charts Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [blend, setBlend] = useState(45);
   const [systems, setSystems] = useState(MAP_SYSTEMS);
   const [links, setLinks] = useState(JUMP_LINKS);
@@ -316,11 +322,7 @@ export default function DeveloperNavChartsLabPage() {
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Title order={1} style={{ marginBottom: 8 }}>
-              <DevTag tag="DEV06" />
-              Nav Charts Lab: Dual-Reality Map
-            </Title>
-            <Text c="dimmed">
+<Text c="dimmed">
               Dual-layer interaction mock. Physical topology and operational overlays are blended with a single slider.
             </Text>
           </div>

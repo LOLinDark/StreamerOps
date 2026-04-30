@@ -1,10 +1,17 @@
+import { useEffect } from 'react';
 import { Container, Stack, Text, Badge, Card, Group, Grid, Button, SimpleGrid } from '@mantine/core';
 import { Link } from 'react-router-dom';
 import { getAllContexts } from '../data/developerContext';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function DeveloperContextIndexPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="DEV02" />Developer Context Index</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const contexts = getAllContexts();
 
   // Group by status
@@ -64,8 +71,7 @@ export default function DeveloperContextIndexPage() {
       <Stack gap="xl">
         {/* Header */}
         <div>
-          <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2rem' }}><DevTag tag="DEV02" />🗂️ Developer Context Index</h1>
-          <Text c="dimmed">Overview of all pages, their status, docs, and tasks</Text>
+<Text c="dimmed">Overview of all pages, their status, docs, and tasks</Text>
           <Text size="sm" c="dimmed" mt="xs">
             💡 Tip: Developer notes appear on each page when Dev Mode is enabled. Toggle it in the header menu.
           </Text>

@@ -34,6 +34,7 @@ import {
   sendModeButtonEvent,
 } from '../libraries/peripherals/hotas';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 const MODE_KEYS = ['green', 'orange', 'red'];
 
@@ -52,6 +53,11 @@ const createEmptyModeMap = () => ({
 const HC06_STORAGE_KEY = 'omnicore.hc06.modes.state';
 
 export default function HOTASConfigModesLabPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="HC06" />Modes Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const CAPTURE_WINDOW_MS = 3000;
 
   const [selectedProfile, setSelectedProfile] = useState('');
@@ -1384,8 +1390,7 @@ export default function HOTASConfigModesLabPage() {
         <Stack gap="xl">
           {/* Header */}
           <div>
-            <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2rem' }}><DevTag tag="HC06" />Technology Config - Modes Lab</h1>
-            {profileName && (
+{profileName && (
               <Text size="lg" fw={600} style={{ marginBottom: '0.5rem', color: '#1e90ff' }}>
                 {profileName}
               </Text>

@@ -46,6 +46,13 @@ const tools = [
     path: null,
     status: 'soon',
   },
+  {
+    label: 'Wizard 1B Capability Tests',
+    desc: 'Step-by-step test runner to prove source-layer capabilities and capture pass/fail evidence.',
+    path: '/overlays/wizard-1b',
+    status: 'live',
+    actionLabel: 'Open Wizard',
+  },
 ];
 
 export default function OverlaysStudioPage() {
@@ -145,6 +152,9 @@ export default function OverlaysStudioPage() {
               </Button>
               <Button variant="light" color="grape" onClick={() => openSourceCaptureWindow()}>
                 Open Source Capture Window
+              </Button>
+              <Button variant="light" color="violet" onClick={() => navigate('/overlays/wizard-1b')}>
+                Open Wizard 1B
               </Button>
               <Button variant="light" onClick={() => window.open('/overlays/window/star-citizen-remote-control', '_blank', 'noopener,noreferrer')}>
                 Open Star Citizen Remote Control

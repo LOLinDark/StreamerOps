@@ -54,6 +54,12 @@ const tools = [
     status: 'soon',
   },
   {
+    label: 'Wizard 1B Capability Tests',
+    desc: 'Run step-by-step layer checks (video, image, text, browser, audio) with pass/fail tracking and logs.',
+    path: '/streamer/wizard-1b',
+    status: 'live',
+  },
+  {
     label: 'Transition Manager',
     desc: 'Configure stinger transitions, crossfades, and scene swap logic between videos in a playlist.',
     path: null,

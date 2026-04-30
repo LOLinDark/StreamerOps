@@ -3,6 +3,7 @@ import { Accordion, Badge, Breadcrumbs, Button, Container, Grid, Group, ScrollAr
 import { IconArrowRight, IconCheck, IconChevronLeft } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 import DevTag from "../components/DevTag";
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 // Mock data: Onboarding modules
 const ONBOARDING_MODULES = [
@@ -83,6 +84,11 @@ const ONBOARDING_MODULES = [
 ];
 
 export default function NewPlayerGuidePage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="GT01" />New Player Guide</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
   const [userProgress, setUserProgress] = useState(() => {
     const stored = localStorage.getItem("npg-progress");
@@ -119,10 +125,7 @@ export default function NewPlayerGuidePage() {
         {/* Header */}
         <Group justify="space-between" align="flex-start" wrap="wrap">
           <div>
-            <Title order={1} style={{ marginBottom: 6 }}>
-              <DevTag tag="GT01" /> New Player Guide
-            </Title>
-            <Text c="dimmed" size="sm">
+<Text c="dimmed" size="sm">
               Your first steps as a Star Citizen. {progressPercent}% complete.
             </Text>
           </div>

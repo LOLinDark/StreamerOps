@@ -2,8 +2,14 @@ import { Container, Title, TextInput, Button, Paper, Text, Stack, Group, Badge, 
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch, apiGet, apiPost, appendErrorLog, usePromptStore } from '../platform-core';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function AmazonQPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM06" />Claude Chat</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -173,8 +179,7 @@ export default function AmazonQPage() {
   return (
     <Container size="lg">
       <Group justify="space-between" mb="md">
-        <Title><DevTag tag="ADM06" />Claude Opus 4.5 Chat</Title>
-        <Group gap="xs">
+<Group gap="xs">
           <Switch label="Stream" checked={streaming} onChange={(e) => setStreaming(e.currentTarget.checked)} size="sm" />
           {usage && (
             <>

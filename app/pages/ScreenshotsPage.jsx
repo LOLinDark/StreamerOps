@@ -1,8 +1,15 @@
+import { useEffect } from 'react';
 import { Container, Title, Text, Box, Stack } from '@mantine/core';
 import ScreenshotsGallery from '../components/ScreenshotsGallery';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function ScreenshotsPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ST07" />Screenshots</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   // Screenshots array - update this as you add images to public/screenshots/
   const screenshots = [
     {
@@ -65,10 +72,7 @@ export default function ScreenshotsPage() {
     <Container size="lg" py="xl">
       <Stack gap="lg">
         <Box>
-          <Title order={1} mb="sm">
-            <DevTag tag="ST07" />OmniCore Screenshots
-          </Title>
-          <Text c="dimmed">
+<Text c="dimmed">
             Explore the features and interface of OmniCore
           </Text>
         </Box>

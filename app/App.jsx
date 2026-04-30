@@ -46,6 +46,7 @@ const StreamerPlaylistManagerPage = lazy(() => import('./pages/StreamerPlaylistM
 const StreamerSceneManagerPage = lazy(() => import('./pages/StreamerSceneManagerPage'));
 const StreamerBackgroundRemovalPage = lazy(() => import('./pages/StreamerBackgroundRemovalPage'));
 const StreamerSoundFilesPage = lazy(() => import('./pages/StreamerSoundFilesPage'));
+const StreamerWizard1BPage = lazy(() => import('./pages/StreamerWizard1BPage'));
 const OverlaysStudioPage = lazy(() => import('./pages/OverlaysStudioPage'));
 const OverlayBrowserPlayoutPage = lazy(() => import('./pages/OverlayBrowserPlayoutPage'));
 const OverlaysStarCitizenQuickPlayoutPage = lazy(() => import('./pages/OverlaysStarCitizenQuickPlayoutPage'));
@@ -174,6 +175,7 @@ function App() {
           <Route path="streamer/playout" element={<Lazy Component={OverlayBrowserPlayoutPage} />} />
           <Route path="streamer/background-removal" element={<Lazy Component={StreamerBackgroundRemovalPage} />} />
           <Route path="streamer/sound-files" element={<Lazy Component={StreamerSoundFilesPage} />} />
+          <Route path="streamer/wizard-1b" element={<Lazy Component={StreamerWizard1BPage} />} />
         </Route>
 
         {/* Overlays Studio Area (new primary section) */}
@@ -181,6 +183,7 @@ function App() {
           <Route path="overlays" element={<Lazy Component={OverlaysStudioPage} />} />
           <Route path="overlays/scene-manager" element={<Lazy Component={StreamerSceneManagerPage} />} />
           <Route path="overlays/playout" element={<Lazy Component={OverlayBrowserPlayoutPage} />} />
+          <Route path="overlays/wizard-1b" element={<Lazy Component={StreamerWizard1BPage} />} />
           <Route path="overlays/star-citizen-playout" element={<Navigate to="/overlays/window/star-citizen-playout" replace />} />
           <Route path="overlays/star-citizen-remote-control" element={<Navigate to="/overlays/window/star-citizen-remote-control" replace />} />
           <Route path="overlays/star-citizen-control" element={<Lazy Component={OverlaysStarCitizenControlPage} />} />

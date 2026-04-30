@@ -4,8 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { apiGet, apiPost, appendErrorLog, clearOmniCoreStorage, useSettingsStore } from '../platform-core';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function SettingsPage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="ADM01" />Settings</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const navigate = useNavigate();
   const costThreshold = useSettingsStore((s) => s.costThreshold);
   const setCostThreshold = useSettingsStore((s) => s.setCostThreshold);
@@ -51,10 +57,7 @@ export default function SettingsPage() {
     <Container size="xl" py="xl">
       {/* Header */}
       <div style={{ marginBottom: '3rem' }}>
-        <h1 className="scifi-heading" style={{ marginBottom: '0.5rem', fontSize: '2.5rem' }}>
-          <DevTag tag="ADM01" />Settings
-        </h1>
-        <Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>
+<Text c="dimmed" size="sm" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>
           Configure your OMNI-CORE experience
         </Text>
       </div>

@@ -16,7 +16,7 @@ import {
   Title
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useMemo, useState } from 'react';
+import { useMemo, useState , useEffect } from 'react';
 import { useSettingsStore } from '../stores';
 import {
   buildThemeExport,
@@ -26,8 +26,14 @@ import {
   THEME_PRESETS
 } from '../theme/themeLabStandard';
 import DevTag from '../components/DevTag';
+import { usePageTitle } from '../contexts/PageTitleContext';
 
 export default function ThemePage() {
+  const { setPageTitle } = usePageTitle();
+  useEffect(() => {
+    setPageTitle(<><DevTag tag="TL01" />Theme Lab</>);
+    return () => setPageTitle(null);
+  }, [setPageTitle]);
   const customTheme = useSettingsStore((s) => s.customTheme);
   const setCustomTheme = useSettingsStore((s) => s.setCustomTheme);
   const resetCustomTheme = useSettingsStore((s) => s.resetCustomTheme);
@@ -102,8 +108,7 @@ export default function ThemePage() {
   return (
     <Container size="lg">
       <Group justify="space-between" mb="md">
-        <Title><DevTag tag="TL01" />Theme Lab Standard v1</Title>
-        <Badge color="cyan" variant="filled">v{THEME_LAB_STANDARD_VERSION}</Badge>
+<Badge color="cyan" variant="filled">v{THEME_LAB_STANDARD_VERSION}</Badge>
       </Group>
 
       <Stack gap="md">
