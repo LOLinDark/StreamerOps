@@ -15,6 +15,12 @@ export const routeConfig = {
       color: 'cyan',
     },
     {
+      label: '/scene-editor',
+      path: '/scene-editor',
+      category: 'Main App',
+      color: 'cyan',
+    },
+    {
       label: '/login',
       path: '/login',
       category: 'Main App',

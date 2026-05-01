@@ -1,8 +1,10 @@
-import { AppShell, Badge, Button, Card, Divider, Group, NavLink, Stack, Switch, Text, Title } from '@mantine/core';
+import { AppShell, Badge, Button, Card, Divider, Group, NavLink, Stack, Switch, Text, Title, ActionIcon, Tooltip } from '@mantine/core';
 import { useEffect, useState, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore } from '../platform-core';
 import BrandWordmark from './BrandWordmark';
+import DevFooter from './DevFooter';
+import DevPanel from './DevPanel';
 import { PageTitleProvider } from '../contexts/PageTitleContext';
 import { getAutoPageTitle } from '../utils/pageTitle';
 
@@ -23,6 +25,8 @@ export default function OverlaysLayout() {
 
   const [serverOnline, setServerOnline] = useState(false);
   const [projectHours, setProjectHours] = useState(0);
+  const [navbarCollapsed, setNavbarCollapsed] = useState(false);
+  const [asideCollapsed, setAsideCollapsed] = useState(false);
 
   useEffect(() => {
     async function checkServer() {
@@ -45,13 +49,25 @@ export default function OverlaysLayout() {
     <PageTitleProvider value={{ setPageTitle }}>
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 250, breakpoint: 'md', collapsed: { mobile: true } }}
-      aside={{ width: 220, breakpoint: 'md', collapsed: { mobile: true } }}
+      navbar={{ width: 250, breakpoint: 'md', collapsed: { mobile: true, desktop: navbarCollapsed } }}
+      aside={{ width: 340, breakpoint: 'md', collapsed: { mobile: true, desktop: asideCollapsed } }}
       padding="md"
     >
       <AppShell.Header p="md">
         <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
+            <Group gap={4}>
+              <Tooltip label={navbarCollapsed ? 'Show left sidebar' : 'Hide left sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setNavbarCollapsed((prev) => !prev)} aria-label="Toggle left sidebar">
+                  {navbarCollapsed ? '>' : '<'}
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={asideCollapsed ? 'Show right sidebar' : 'Hide right sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setAsideCollapsed((prev) => !prev)} aria-label="Toggle right sidebar">
+                  {asideCollapsed ? '<' : '>'}
+                </ActionIcon>
+              </Tooltip>
+            </Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
             <Badge size="sm" variant="light" color="blue">📊 {projectHours}h</Badge>
@@ -89,7 +105,7 @@ export default function OverlaysLayout() {
         </Stack>
       </AppShell.Navbar>
 
-      <AppShell.Aside p="md">
+      <AppShell.Aside p="md" style={{ overflowY: 'auto' }}>
         <Stack>
           <Title order={5}>Mode</Title>
           <Switch checked={colorScheme === 'dark'} onChange={toggleColorScheme} onLabel="🌙" offLabel="☀️" />
@@ -105,6 +121,10 @@ export default function OverlaysLayout() {
               </Badge>
             </Stack>
           </Card>
+          <Divider />
+          <DevFooter docked width={280} height={260} />
+          <Divider />
+          <DevPanel docked />
         </Stack>
       </AppShell.Aside>
 

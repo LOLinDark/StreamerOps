@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Group, Stack, Text } from '@mantine/core';
+import { Group, Stack, Text, Button, Switch } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { setupObsWizardLogos } from '../core/api/providers/obs';
 import {
   getQuickPlayoutTemplate,
   QUICK_PLAYOUT_CONTROL_CHANNEL,
@@ -246,6 +248,9 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
     disclaimer: !isCleanOutput,
   });
   const [playlist, setPlaylist] = useState(templatePlaylist);
+  const [useObsLogos, setUseObsLogos] = useState(false);
+  const [obsConnectionSettings] = useState({ host: '127.0.0.1', port: 4455, password: '', sceneName: 'StreamerOps Wizard 1B Test' });
+  const [logoSetupLoading, setLogoSetupLoading] = useState(false);
 
   const videoRef = useRef(null);
   const timerRef = useRef(null);
@@ -974,13 +979,15 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
       >
       {outputMode !== 'clean' && elementVisibility.header && (
         <div style={{ borderBottom: `1px solid ${template.theme.border}`, padding: '10px 16px', position: 'relative' }}>
-          <div style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-            <img
-              src={STAR_CITIZEN_LEFT_LOGO}
-              alt="Star Citizen"
-              style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
-            />
-          </div>
+          {!useObsLogos && (
+            <div style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+              <img
+                src={STAR_CITIZEN_LEFT_LOGO}
+                alt="Star Citizen"
+                style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
+              />
+            </div>
+          )}
           <Stack gap={1} align="center" style={{ minHeight: 34, justifyContent: 'center' }}>
             <Text fw={800} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>Community Broadcast</Text>
             <Text
@@ -992,13 +999,15 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
             </Text>
           </Stack>
 
-          <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-            <img
-              src={STAR_CITIZEN_RIGHT_LOGO}
-              alt="Made By The Community"
-              style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
-            />
-          </div>
+          {!useObsLogos && (
+            <div style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+              <img
+                src={STAR_CITIZEN_RIGHT_LOGO}
+                alt="Made By The Community"
+                style={{ maxHeight: 64, width: 'auto', opacity: 0.92 }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1067,6 +1076,77 @@ export default function OverlaysStarCitizenQuickPlayoutPage({
             {DISCLAIMER_TEXT}
           </Text>
         </Group>
+      )}
+
+      {outputMode !== 'clean' && (
+        <div style={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          background: 'rgba(0, 0, 0, 0.8)',
+          border: '1px solid rgba(216, 243, 255, 0.3)',
+          borderRadius: 8,
+          padding: 12,
+          backdropFilter: 'blur(8px)',
+          zIndex: 9999,
+          minWidth: 200,
+        }}>
+          <Stack gap={8}>
+            <Text size="xs" c="rgba(216, 243, 255, 0.8)" fw={600}>Logo Mode</Text>
+            <Switch
+              label="Use OBS Logos"
+              checked={useObsLogos}
+              onChange={(e) => setUseObsLogos(e.currentTarget.checked)}
+              size="sm"
+              description={useObsLogos ? 'Showing OBS-managed' : 'Showing HTML'}
+            />
+            {useObsLogos && (
+              <Button
+                size="xs"
+                variant="light"
+                loading={logoSetupLoading}
+                onClick={async () => {
+                  setLogoSetupLoading(true);
+                  try {
+                    const result = await setupObsWizardLogos({
+                      ...obsConnectionSettings,
+                      sceneIndex: null,
+                    });
+                    if (result?.success) {
+                      notifications.show({
+                        title: 'Success',
+                        message: `Logo sources created in scene: ${result.sceneName}`,
+                        color: 'teal',
+                        autoClose: 3000,
+                      });
+                    } else {
+                      notifications.show({
+                        title: 'Setup Failed',
+                        message: result?.error || 'Unknown error occurred',
+                        color: 'red',
+                        autoClose: 4000,
+                      });
+                      console.error('Logo setup error:', result);
+                    }
+                  } catch (err) {
+                    const errorMsg = err?.message || String(err);
+                    notifications.show({
+                      title: 'Error',
+                      message: errorMsg,
+                      color: 'red',
+                      autoClose: 5000,
+                    });
+                    console.error('Failed to setup OBS logos:', err);
+                  } finally {
+                    setLogoSetupLoading(false);
+                  }
+                }}
+              >
+                Setup OBS Logos
+              </Button>
+            )}
+          </Stack>
+        </div>
       )}
       </div>
     </div>

@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DevTag from '../components/DevTag';
 import { usePageTitle } from '../contexts/PageTitleContext';
-import { probeObsWizardConnect, probeObsWizardScene } from '../core/api/providers/obs';
+import { probeObsWizardConnect, probeObsWizardScene, probeObsWizardVideo, probeObsWizardImage, probeObsWizardText, probeObsWizardBrowser, probeObsWizardOrder, probeObsWizardAudio, cleanupObsWizard } from '../core/api/providers/obs';
 
 const WIZARD_STEPS = [
   {
@@ -170,9 +170,48 @@ export default function StreamerWizard1BPage() {
         return;
       }
 
+      const scenePayload = { ...getConnectionPayload(), sceneName: 'StreamerOps Wizard 1B Test' };
+
+      if (stepId === 'video') {
+        const result = await probeObsWizardVideo(scenePayload);
+        setStepStatus(stepId, 'pass', result.note || 'Media source probe passed.');
+        return;
+      }
+
+      if (stepId === 'image') {
+        const result = await probeObsWizardImage(scenePayload);
+        setStepStatus(stepId, 'pass', result.note || 'Image source probe passed.');
+        return;
+      }
+
+      if (stepId === 'text') {
+        const result = await probeObsWizardText(scenePayload);
+        setStepStatus(stepId, result.textMatches ? 'pass' : 'fail', result.note || 'Text source probe completed.');
+        return;
+      }
+
+      if (stepId === 'browser') {
+        const result = await probeObsWizardBrowser(scenePayload);
+        setStepStatus(stepId, 'pass', result.note || 'Browser source probe passed.');
+        return;
+      }
+
+      if (stepId === 'order') {
+        const result = await probeObsWizardOrder(scenePayload);
+        setStepStatus(stepId, result.reorderOk ? 'pass' : 'fail', result.note || 'Order probe completed.');
+        return;
+      }
+
+      if (stepId === 'audio') {
+        const result = await probeObsWizardAudio(getConnectionPayload());
+        setStepStatus(stepId, result.audioInputCount > 0 ? 'pass' : 'fail', result.note || 'Audio probe completed.');
+        return;
+      }
+
       setStepStatus(stepId, 'pass', 'Basic probe completed. Confirm quality behavior manually before sign-off.');
     } catch (error) {
-      const message = error?.message || 'Probe failed';
+      const details = typeof error?.payload?.details === 'string' ? error.payload.details : '';
+      const message = details ? `${error?.message || 'Probe failed'} (${details})` : (error?.message || 'Probe failed');
       setStepStatus(stepId, 'fail', message);
     }
   };
@@ -187,6 +226,16 @@ export default function StreamerWizard1BPage() {
   const resetWizard = () => {
     setStatuses(Object.fromEntries(WIZARD_STEPS.map((step) => [step.id, 'pending'])));
     setLogs(['Wizard reset.']);
+  };
+
+  const cleanupTestScene = async () => {
+    appendLog('Cleanup: RUNNING - Removing probe sources from test scene...');
+    try {
+      const result = await cleanupObsWizard({ ...getConnectionPayload(), sceneName: 'StreamerOps Wizard 1B Test' });
+      appendLog(`Cleanup: DONE - Removed: ${result.removed?.join(', ') || 'none'}`);
+    } catch (error) {
+      appendLog(`Cleanup: FAIL - ${error?.message || 'Unknown error'}`);
+    }
   };
 
   return (
@@ -220,7 +269,10 @@ export default function StreamerWizard1BPage() {
             <Stack gap="xs">
               <Group justify="space-between">
                 <Text fw={700}>Steps</Text>
-                <Button size="compact-xs" variant="subtle" onClick={resetWizard}>Reset</Button>
+                <Group gap={4}>
+                  <Button size="compact-xs" variant="subtle" color="orange" onClick={cleanupTestScene} title="Remove all probe sources from the test scene in OBS">Clean Up OBS</Button>
+                  <Button size="compact-xs" variant="subtle" onClick={resetWizard}>Reset</Button>
+                </Group>
               </Group>
 
               <Card withBorder p="xs" style={{ background: 'rgba(255, 255, 255, 0.02)' }}>

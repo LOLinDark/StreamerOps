@@ -1,11 +1,41 @@
 import { Paper, Text, Group, Badge, ScrollArea, Stack } from '@mantine/core';
 import { useAppStore } from '../stores';
 
-export default function DevFooter() {
+export default function DevFooter({ docked = false, width = 280, height = 260 }) {
   const activities = useAppStore((s) => s.activities);
   const devMode = useAppStore((s) => s.devMode);
 
   if (!devMode) return null;
+
+  if (docked) {
+    return (
+      <Paper
+        withBorder
+        p="xs"
+        style={{
+          width,
+          maxWidth: '100%',
+          border: '1px solid rgba(34, 139, 230, 0.55)',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+        }}
+      >
+        <Group gap="xs" mb={4}>
+          <Badge size="xs" color="blue">DEV MODE</Badge>
+          <Text size="xs" fw={700}>Activity Monitor</Text>
+          <Badge size="xs" variant="light">{activities.length}</Badge>
+        </Group>
+        <ScrollArea h={height}>
+          <Stack gap={2}>
+            {activities.map(activity => (
+              <Text key={activity.id} size="xs" style={{ fontFamily: 'monospace' }}>
+                {activity.timestamp} {activity.type} {activity.details}
+              </Text>
+            ))}
+          </Stack>
+        </ScrollArea>
+      </Paper>
+    );
+  }
 
   return (
     <Paper

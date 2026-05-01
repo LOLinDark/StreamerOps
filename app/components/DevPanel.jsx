@@ -5,7 +5,7 @@ import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { routeConfig } from '../config/routes';
 import useAppStore from '../stores/useAppStore';
 
-export default function DevPanel() {
+export default function DevPanel({ docked = false }) {
   const navigate = useNavigate();
   const devMode = useAppStore((s) => s.devMode);
   const [isMinimized, setIsMinimized] = useState(true);
@@ -14,15 +14,63 @@ export default function DevPanel() {
   const dragRef = useRef(null);
   const panelWidth = 294;
 
-  // Hide panel when Dev Mode is off
-  if (!devMode) return null;
-
   const getSectionColor = (color) => {
     if (color === 'orange') return '#ff6b00';
     if (color === 'grape') return '#b300ff';
     if (color === 'teal') return '#00d9ff';
     return '#00ff88';
   };
+
+  // Hide panel when Dev Mode is off
+  if (!devMode) return null;
+
+  // Docked mode: inline sidebar widget, no drag, always expanded
+  if (docked) {
+    return (
+      <div style={{ width: '100%' }}>
+        <div style={{ borderBottom: '1px solid rgba(0, 217, 255, 0.3)', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>
+          <Text size="xs" fw={700} style={{ color: '#00d9ff', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            🔬 Developer Panel
+          </Text>
+        </div>
+        <Stack gap="xs">
+          {Object.entries(routeConfig).map(([key, routes], idx) => (
+            <div
+              key={key}
+              style={idx > 0 ? { borderTop: '1px solid rgba(0, 217, 255, 0.2)', paddingTop: '0.5rem' } : {}}
+            >
+              <Text
+                size="xs"
+                fw={600}
+                style={{
+                  color: getSectionColor(routes[0]?.color),
+                  marginBottom: '0.5rem',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {routes[0]?.category || key}
+              </Text>
+              <Stack gap="xs">
+                {routes.map((route) => (
+                  <Button
+                    key={route.path}
+                    size="xs"
+                    variant="outline"
+                    color={route.color}
+                    fullWidth
+                    onClick={() => navigate(route.path)}
+                    style={{ fontSize: '0.75rem' }}
+                  >
+                    {route.label}
+                  </Button>
+                ))}
+              </Stack>
+            </div>
+          ))}
+        </Stack>
+      </div>
+    );
+  }
 
   const handleMouseMove = (e) => {
     if (!dragRef.current) return;

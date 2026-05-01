@@ -4,7 +4,6 @@ import AdminLayout from './components/LayoutNew';
 import StreamerLayout from './components/StreamerLayout';
 import OverlaysLayout from './components/OverlaysLayout';
 import MainLayout from './components/MainLayout';
-import DevPanel from './components/DevPanel';
 import RSILoginPage from './pages/RSILoginPage';
 import DashboardPage from './pages/DashboardPage';
 import MainDashboardPage from './pages/MainDashboardPage';
@@ -47,6 +46,7 @@ const StreamerSceneManagerPage = lazy(() => import('./pages/StreamerSceneManager
 const StreamerBackgroundRemovalPage = lazy(() => import('./pages/StreamerBackgroundRemovalPage'));
 const StreamerSoundFilesPage = lazy(() => import('./pages/StreamerSoundFilesPage'));
 const StreamerWizard1BPage = lazy(() => import('./pages/StreamerWizard1BPage'));
+const SceneEditorPage = lazy(() => import('./pages/SceneEditorPage'));
 const OverlaysStudioPage = lazy(() => import('./pages/OverlaysStudioPage'));
 const OverlayBrowserPlayoutPage = lazy(() => import('./pages/OverlayBrowserPlayoutPage'));
 const OverlaysStarCitizenQuickPlayoutPage = lazy(() => import('./pages/OverlaysStarCitizenQuickPlayoutPage'));
@@ -102,7 +102,6 @@ function App() {
   return (
     <>
       {!isStreamPlayoutWindow && <NetworkStatusBadge />}
-      {!isStreamPlayoutWindow && <DevPanel />}
       <RuntimeObservers />
       <Routes>
         {/* Theme Lab Routes - Public, no auth required */}
@@ -134,6 +133,7 @@ function App() {
           <Route path="hotas-config" element={<HOTASConfigMainPage />} />
           <Route path="hotas-config-modes-lab" element={<HOTASConfigModesLabPage />} />
           <Route path="ship-database" element={<ShipDatabasePage />} />
+          <Route path="scene-editor" element={<Lazy Component={SceneEditorPage} />} />
           <Route path="settings" element={<Lazy Component={SettingsPage} />} />
           <Route path="settings/hotas" element={<Lazy Component={HOTASTestPage} />} />
           <Route path="settings/theme" element={<Lazy Component={ThemePage} />} />

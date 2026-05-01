@@ -13,6 +13,7 @@ export default function MainLayout() {
   const location = useLocation();
   const [pageTitle, setPageTitle] = useState(null);
   const autoPageTitle = getAutoPageTitle(location.pathname);
+  const isFullWidth = location.pathname === '/scene-editor';
 
   useEffect(() => {
     setPageTitle(null);
@@ -28,32 +29,38 @@ export default function MainLayout() {
   return (
     <PageTitleProvider value={{ setPageTitle }}>
     <div style={{ minHeight: '100vh', background: 'var(--oc-space-deep)', position: 'relative' }}>
-      <AppHeader pageTitle={pageTitle || autoPageTitle} />
-
-      {/* Aerobook/Bookmarks Bar */}
-      <AerobookBar />
+      {!isFullWidth && <AppHeader pageTitle={pageTitle || autoPageTitle} />}
+      {!isFullWidth && <AerobookBar />}
 
       {/* Permanent gradient overlay — positioned below header + bookmark bar, scrolls with content */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          top: '127px',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 0,
-          background: 'linear-gradient(160deg, rgba(0,4,15,0.60) 0%, rgba(0,4,15,0.80) 100%)',
-          pointerEvents: 'none',
-          transition: 'background 0.5s ease',
-        }}
-      />
+      {!isFullWidth && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: '127px',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 0,
+            background: 'linear-gradient(160deg, rgba(0,4,15,0.60) 0%, rgba(0,4,15,0.80) 100%)',
+            pointerEvents: 'none',
+            transition: 'background 0.5s ease',
+          }}
+        />
+      )}
 
       {/* Main Content */}
-      <Container size="xl" style={{ padding: '2rem 1rem', position: 'relative', zIndex: 1 }}>
-        <DeveloperNotes />
-        <Outlet />
-      </Container>
+      {isFullWidth ? (
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100vh' }}>
+          <Outlet />
+        </div>
+      ) : (
+        <Container size="xl" style={{ padding: '2rem 1rem', position: 'relative', zIndex: 1 }}>
+          <DeveloperNotes />
+          <Outlet />
+        </Container>
+      )}
     </div>
     </PageTitleProvider>
   );

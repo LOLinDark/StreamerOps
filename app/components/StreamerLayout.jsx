@@ -1,8 +1,9 @@
-import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu } from '@mantine/core';
+import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu, ActionIcon, Tooltip } from '@mantine/core';
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore, useSettingsStore } from '../platform-core';
 import DevFooter from './DevFooter';
+import DevPanel from './DevPanel';
 import BrandWordmark from './BrandWordmark';
 import { PageTitleProvider } from '../contexts/PageTitleContext';
 import { getAutoPageTitle } from '../utils/pageTitle';
@@ -21,6 +22,8 @@ export default function StreamerLayout() {
   const [serverVersion, setServerVersion] = useState(null);
   const [projectHours, setProjectHours] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
+  const [navbarCollapsed, setNavbarCollapsed] = useState(false);
+  const [asideCollapsed, setAsideCollapsed] = useState(false);
 
   useEffect(() => {
     const handleAIStart = () => setAiLoading(true);
@@ -70,13 +73,25 @@ export default function StreamerLayout() {
       header={{ height: 60 }}
       // VS Code's built-in browser is often narrow; collapse side rails at mobile
       // widths so Streamer tools remain clickable and testable.
-      navbar={{ width: 220, breakpoint: 'md', collapsed: { mobile: true } }}
-      aside={{ width: 200, breakpoint: 'md', collapsed: { mobile: true } }}
+      navbar={{ width: 220, breakpoint: 'md', collapsed: { mobile: true, desktop: navbarCollapsed } }}
+      aside={{ width: 340, breakpoint: 'md', collapsed: { mobile: true, desktop: asideCollapsed } }}
       padding="md"
     >
       <AppShell.Header p="md">
         <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
+            <Group gap={4}>
+              <Tooltip label={navbarCollapsed ? 'Show left sidebar' : 'Hide left sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setNavbarCollapsed((prev) => !prev)} aria-label="Toggle left sidebar">
+                  {navbarCollapsed ? '>' : '<'}
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={asideCollapsed ? 'Show right sidebar' : 'Hide right sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setAsideCollapsed((prev) => !prev)} aria-label="Toggle right sidebar">
+                  {asideCollapsed ? '<' : '>'}
+                </ActionIcon>
+              </Tooltip>
+            </Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
             <Badge size="sm" variant="light" color="blue">📊 {projectHours}h</Badge>
@@ -177,7 +192,7 @@ export default function StreamerLayout() {
         </Stack>
       </AppShell.Navbar>
 
-      <AppShell.Aside p="md">
+      <AppShell.Aside p="md" style={{ overflowY: 'auto' }}>
         <Stack>
           <Group justify="space-between">
             <Title order={5}>Theme</Title>
@@ -207,12 +222,15 @@ export default function StreamerLayout() {
             <Text size="sm">{serverOnline ? 'Backend Online' : 'Backend Offline'}</Text>
           </Indicator>
           {serverVersion && <Text size="xs" c="dimmed">{serverVersion}</Text>}
+          <Divider />
+          <DevFooter docked width={280} height={260} />
+          <Divider />
+          <DevPanel docked />
         </Stack>
       </AppShell.Aside>
 
       <AppShell.Main>
         <Outlet />
-        {devMode && <DevFooter />}
       </AppShell.Main>
     </AppShell>
     </PageTitleProvider>

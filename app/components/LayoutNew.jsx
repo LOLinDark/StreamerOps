@@ -1,9 +1,10 @@
-import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu, Container } from '@mantine/core';
+import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divider, Alert, Switch, Group, Menu, Container, ActionIcon, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore, useSettingsStore } from '../platform-core';
 import DevFooter from './DevFooter';
+import DevPanel from './DevPanel';
 import DeveloperNotes from './DeveloperNotes';
 import AerobookBar from './AerobookBar';
 import BrandWordmark from './BrandWordmark';
@@ -32,6 +33,8 @@ export default function Layout() {
   const [projectHours, setProjectHours] = useState(0);
   const [rateLimitAlert, setRateLimitAlert] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [navbarCollapsed, setNavbarCollapsed] = useState(false);
+  const [asideCollapsed, setAsideCollapsed] = useState(false);
 
   useEffect(() => {
     const handleAIStart = () => setAiLoading(true);
@@ -99,13 +102,25 @@ export default function Layout() {
     <PageTitleProvider value={{ setPageTitle }}>
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 220, breakpoint: 'sm' }}
-      aside={{ width: 220, breakpoint: 'sm' }}
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { desktop: navbarCollapsed, mobile: false } }}
+      aside={{ width: 340, breakpoint: 'sm', collapsed: { desktop: asideCollapsed, mobile: false } }}
       padding="md"
     >
       <AppShell.Header p="md">
         <Group justify="space-between" style={{ position: 'relative' }}>
           <Group>
+            <Group gap={4}>
+              <Tooltip label={navbarCollapsed ? 'Show left sidebar' : 'Hide left sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setNavbarCollapsed((prev) => !prev)} aria-label="Toggle left sidebar">
+                  {navbarCollapsed ? '>' : '<'}
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={asideCollapsed ? 'Show right sidebar' : 'Hide right sidebar'}>
+                <ActionIcon variant="subtle" onClick={() => setAsideCollapsed((prev) => !prev)} aria-label="Toggle right sidebar">
+                  {asideCollapsed ? '<' : '>'}
+                </ActionIcon>
+              </Tooltip>
+            </Group>
             <BrandWordmark onClick={() => navigate('/')} size="1.25rem" color="#4cc9f0" />
             <Badge size="sm" variant="light">{FRONTEND_VERSION}</Badge>
             <Badge size="sm" variant="light" color="blue">📊 {projectHours}h</Badge>
@@ -119,21 +134,35 @@ export default function Layout() {
             <Button variant={path === '/' ? 'filled' : 'subtle'} color="cyan" component={Link} to="/">Dashboard</Button>
             <Menu>
               <Menu.Target>
-                <Button variant={path.startsWith('/admin') ? 'filled' : 'subtle'}>Admin</Button>
+                <Button variant={path.startsWith('/admin') ? 'filled' : 'subtle'}>Tools</Button>
               </Menu.Target>
               <Menu.Dropdown>
+                <Menu.Label>AI Assistants</Menu.Label>
                 <Menu.Item component={Link} to="/admin/chat/claude">Claude Chat</Menu.Item>
                 <Menu.Item component={Link} to="/admin/chat/gemini">Gemini Chat</Menu.Item>
                 <Menu.Item component={Link} to="/admin/ai-rules">AI Rules</Menu.Item>
                 <Menu.Divider />
+                <Menu.Label>Monitoring</Menu.Label>
                 <Menu.Item component={Link} to="/admin/analytics">Analytics</Menu.Item>
                 <Menu.Item component={Link} to="/admin/rate-limits">Rate Limits</Menu.Item>
                 <Menu.Item component={Link} to="/admin/history">Field History</Menu.Item>
               </Menu.Dropdown>
             </Menu>
-            <Button variant={path.startsWith('/developer') ? 'filled' : 'subtle'} component={Link} to="/developer">Developer</Button>
-            <Button variant={path.startsWith('/streamer') ? 'filled' : 'subtle'} color="violet" component={Link} to="/streamer">Streamer</Button>
-            <Button variant={path.startsWith('/overlays') ? 'filled' : 'subtle'} color="pink" component={Link} to="/overlays">Overlays Studio</Button>
+            <Button variant={path.startsWith('/developer') ? 'filled' : 'subtle'} component={Link} to="/developer">Dev</Button>
+            <Menu>
+              <Menu.Target>
+                <Button variant={(path.startsWith('/streamer') || path.startsWith('/overlays')) ? 'filled' : 'subtle'} color="violet">Prototypes</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Streamer</Menu.Label>
+                <Menu.Item component={Link} to="/streamer">Streamer Hub</Menu.Item>
+                <Menu.Item component={Link} to="/streamer/wizard-1b">Capability Tests</Menu.Item>
+                <Menu.Divider />
+                <Menu.Label>Overlays Studio</Menu.Label>
+                <Menu.Item component={Link} to="/overlays">Overlays Hub</Menu.Item>
+                <Menu.Item component={Link} to="/overlays/star-citizen-control">SC Quick Controls</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
             <Button variant="subtle" onClick={() => {
               resetWelcome();
               window.location.href = '/welcome';
@@ -151,24 +180,31 @@ export default function Layout() {
         <Title order={5} mb="md" c="dimmed" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>Navigation</Title>
         <Stack gap="xs">
           <NavLink label="Dashboard" active={path === '/'} component={Link} to="/" />
-          <Divider my="xs" label="Admin Tools" labelPosition="center" />
+          <Divider my="xs" label="Tools" labelPosition="center" />
           <NavLink label="Claude Chat" active={isActive('/admin/chat/claude')} component={Link} to="/admin/chat/claude" />
           <NavLink label="Gemini Chat" active={isActive('/admin/chat/gemini')} component={Link} to="/admin/chat/gemini" />
           <NavLink label="AI Rules" active={isActive('/admin/ai-rules')} component={Link} to="/admin/ai-rules" />
           <NavLink label="Analytics" active={isActive('/admin/analytics')} component={Link} to="/admin/analytics" />
           <NavLink label="Rate Limits" active={isActive('/admin/rate-limits')} component={Link} to="/admin/rate-limits" />
           <NavLink label="Field History" active={isActive('/admin/history')} component={Link} to="/admin/history" />
-          <Divider my="xs" label="Config" labelPosition="center" />
+          <Divider my="xs" label="Settings" labelPosition="center" />
           <NavLink label="Settings" active={path === '/settings'} component={Link} to="/settings" />
           <NavLink label="Theme" active={isActive('/settings/theme')} component={Link} to="/settings/theme" />
           <NavLink label="HOTAS" active={isActive('/settings/hotas')} component={Link} to="/settings/hotas" />
+          <Divider my="xs" label="Dev" labelPosition="center" />
+          <NavLink label="Developer" active={path === '/developer'} component={Link} to="/developer" />
           <NavLink label="Error Log" active={isActive('/developer/errors')} component={Link} to="/developer/errors" />
           <NavLink label="Changes" active={isActive('/developer/changes')} component={Link} to="/developer/changes" />
           <NavLink label="About" active={isActive('/about')} component={Link} to="/about" />
+          <Divider my="xs" label="Prototypes" labelPosition="center" />
+          <NavLink label="Streamer Hub" active={path === '/streamer'} component={Link} to="/streamer" />
+          <NavLink label="Capability Tests" active={isActive('/streamer/wizard-1b')} component={Link} to="/streamer/wizard-1b" />
+          <NavLink label="Overlays Hub" active={path === '/overlays'} component={Link} to="/overlays" />
+          <NavLink label="SC Quick Controls" active={isActive('/overlays/star-citizen-control')} component={Link} to="/overlays/star-citizen-control" />
         </Stack>
       </AppShell.Navbar>
 
-      <AppShell.Aside p="md">
+      <AppShell.Aside p="md" style={{ overflowY: 'auto' }}>
         <Stack>
           <Group justify="space-between">
             <Title order={5}>Theme</Title>
@@ -225,6 +261,10 @@ export default function Layout() {
             }
           }} color="blue" size="sm">View Usage</Button>
           <Button onClick={() => window.location.reload()} color="blue" size="sm">Reload</Button>
+          <Divider />
+          <DevFooter docked width={280} height={280} />
+          <Divider />
+          <DevPanel docked />
         </Stack>
       </AppShell.Aside>
 
@@ -235,7 +275,6 @@ export default function Layout() {
           <Outlet />
         </Container>
       </AppShell.Main>
-      <DevFooter />
     </AppShell>
     </PageTitleProvider>
   );

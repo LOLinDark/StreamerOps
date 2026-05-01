@@ -1,5 +1,5 @@
 import { Container, Text, SimpleGrid, Stack, Image, Group } from '@mantine/core';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
@@ -108,9 +108,40 @@ const ShipWireframe = ({ color }) => (
   </svg>
 );
 
+// Scene Editor Wireframe - canvas with layer panels
+const SceneEditorWireframe = ({ color }) => (
+  <svg viewBox="0 0 200 160" style={{ width: '100%', height: '100%', maxWidth: '140px' }}>
+    {/* Canvas area */}
+    <rect x="50" y="20" width="100" height="56" stroke={color} strokeWidth="1.5" fill="none" rx="1" />
+    {/* 16:9 inner frame */}
+    <rect x="54" y="24" width="92" height="48" stroke={color} strokeWidth="0.6" fill="none" opacity="0.4" />
+    {/* Fake layers inside canvas */}
+    <rect x="58" y="28" width="84" height="8"  stroke={color} strokeWidth="0.8" fill="none" opacity="0.6" />
+    <rect x="58" y="52" width="30" height="14" stroke={color} strokeWidth="0.8" fill="none" opacity="0.6" />
+    <rect x="112" y="52" width="30" height="14" stroke={color} strokeWidth="0.8" fill="none" opacity="0.6" />
+    {/* Left panel (layers) */}
+    <rect x="10" y="20" width="36" height="56" stroke={color} strokeWidth="1.2" fill="none" rx="1" />
+    <line x1="14" y1="30" x2="42" y2="30" stroke={color} strokeWidth="0.7" opacity="0.5" />
+    <line x1="14" y1="38" x2="42" y2="38" stroke={color} strokeWidth="0.7" opacity="0.5" />
+    <line x1="14" y1="46" x2="42" y2="46" stroke={color} strokeWidth="0.7" opacity="0.5" />
+    <line x1="14" y1="54" x2="42" y2="54" stroke={color} strokeWidth="0.7" opacity="0.5" />
+    {/* Right panel (inspector) */}
+    <rect x="154" y="20" width="36" height="56" stroke={color} strokeWidth="1.2" fill="none" rx="1" />
+    <line x1="158" y1="30" x2="186" y2="30" stroke={color} strokeWidth="0.7" opacity="0.5" />
+    <rect x="158" y="36" width="24" height="4" stroke={color} strokeWidth="0.5" fill="none" opacity="0.4" />
+    <rect x="158" y="44" width="24" height="4" stroke={color} strokeWidth="0.5" fill="none" opacity="0.4" />
+    <rect x="158" y="52" width="24" height="4" stroke={color} strokeWidth="0.5" fill="none" opacity="0.4" />
+    {/* Top bar */}
+    <rect x="10" y="12" width="180" height="6" stroke={color} strokeWidth="0.8" fill="none" rx="1" opacity="0.5" />
+    {/* Bottom bar */}
+    <rect x="10" y="78" width="180" height="5" stroke={color} strokeWidth="0.8" fill="none" rx="1" opacity="0.4" />
+    {/* Selection highlight on canvas */}
+    <rect x="58" y="52" width="30" height="14" stroke={color} strokeWidth="1.2" fill="none" opacity="1" />
+  </svg>
+);
+
 // Hybrid Design - Grid + Wireframe + Glow
-const HybridPlaceholder = ({ tool }) => (
-  <div
+const HybridPlaceholder = ({ tool }) => (  <div
     style={{
       width: '100%',
       height: '200px',
@@ -176,6 +207,8 @@ const HybridPlaceholder = ({ tool }) => (
       >
         {tool.id === 'hotas-config' ? (
           <HOTASWireframe color={tool.color} />
+        ) : tool.id === 'scene-editor' ? (
+          <SceneEditorWireframe color={tool.color} />
         ) : (
           <ShipWireframe color={tool.color} />
         )}
@@ -189,7 +222,7 @@ const HybridPlaceholder = ({ tool }) => (
           textShadow: `0 0 8px ${tool.color}80`,
         }}
       >
-        {tool.id === 'hotas-config' ? 'HOTAS.CONFIG' : 'VERSE.DB'}
+        {tool.id === 'hotas-config' ? 'HOTAS.CONFIG' : tool.id === 'scene-editor' ? 'SCENE.EDITOR' : 'VERSE.DB'}
       </div>
     </div>
   </div>
@@ -208,13 +241,13 @@ const getToolsArray = () => [
     enabled: true,
   },
   {
-    id: 'ship-database',
-    title: 'Ship Tools',
-    desc: 'Prepare ship data for stream segments, visual sequences, and future chat-driven game ideas',
-    image: getAssetUrl('tools/ship-database.jpg'),
-    alt: 'Ship Tools - Star Citizen ship data for stream content and interactive use',
-    color: '#00d9ff',
-    path: '/ship-database',
+    id: 'scene-editor',
+    title: 'Scene Editor',
+    desc: 'Design stream layouts visually — position layers, adjust sources, and build scenes for broadcast',
+    image: null,
+    alt: 'Scene Editor - WYSIWYG stream scene design tool',
+    color: '#4cc9f0',
+    path: '/scene-editor',
     enabled: true,
   },
   {
@@ -252,7 +285,7 @@ const getToolsArray = () => [
 // Fallback image placeholder for missing assets
 const PlaceholderImage = ({ tool }) => {
   // Use Hybrid design for enabled tech/ship tools
-  if (tool.enabled && (tool.id === 'hotas-config' || tool.id === 'ship-database')) {
+  if (tool.enabled && (tool.id === 'hotas-config' || tool.id === 'scene-editor')) {
     return <HybridPlaceholder tool={tool} />;
   }
 
