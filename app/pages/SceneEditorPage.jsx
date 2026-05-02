@@ -122,6 +122,7 @@ const INITIAL_LAYERS = [
     x: 16, y: 17, width: 200, height: 64,
     opacity: 92,
     source: '/assets/images/star-citizen/starcitizen-logo-white.png',
+    fallback: false,
   },
   {
     id: 'logo-right',
@@ -132,6 +133,7 @@ const INITIAL_LAYERS = [
     x: 1704, y: 17, width: 200, height: 64,
     opacity: 92,
     source: '/assets/images/star-citizen/MadeByTheCommunity_White.png',
+    fallback: false,
   },
   {
     id: 'title-text',
@@ -374,6 +376,9 @@ function LayerItem({ layer, selected, onSelect, onToggleVisible, onToggleLock, o
           >
             {layer.type}
           </Badge>
+          {layer.type === 'image' && layer.fallback && (
+            <Badge color="orange" variant="outline" size="xs" style={{ flexShrink: 0 }}>fallback</Badge>
+          )}
           <Text size="xs" truncate style={{ minWidth: 0 }}>{layer.label}</Text>
         </Group>
         <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -515,6 +520,23 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
             </Group>
             <Text size="10px" style={{ color: `${PANEL_ACCENT}70` }}>
               Ready for local {layer.type} uploads. Existing public asset paths still work as-is.
+            </Text>
+          </>
+        )}
+
+        {layer.type === 'image' && (
+          <>
+            <Divider label="Migration" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+            <Switch
+              label="Fallback mode (skip on Apply to OBS)"
+              size="xs"
+              checked={!!layer.fallback}
+              onChange={(e) => set('fallback', e.currentTarget.checked)}
+              color="orange"
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
+            <Text size="10px" style={{ color: `${PANEL_ACCENT}60` }}>
+              Enable to keep the existing OBS source untouched during Apply. Use for A/B comparison against the native image source.
             </Text>
           </>
         )}

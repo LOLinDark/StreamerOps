@@ -648,6 +648,7 @@ export function registerObsRoutes(app) {
       label: String(layer.label || '').slice(0, 120),
       type: ['image', 'video', 'text', 'browser', 'audio'].includes(layer.type) ? layer.type : 'image',
       visible: Boolean(layer.visible ?? true),
+      fallback: Boolean(layer.fallback),
       x: Number.isFinite(Number(layer.x)) ? Number(layer.x) : 0,
       y: Number.isFinite(Number(layer.y)) ? Number(layer.y) : 0,
       width: Number.isFinite(Number(layer.width)) ? Math.max(1, Number(layer.width)) : 100,
@@ -665,6 +666,22 @@ export function registerObsRoutes(app) {
         let obsKind = null;
         let resolvedPath = null;
         let note = '';
+
+        if (layer.fallback) {
+          return {
+            layerId: layer.id,
+            label: layer.label,
+            sourceName,
+            type: layer.type,
+            obsKind: null,
+            resolvedPath: null,
+            visible: layer.visible,
+            opacity: layer.opacity,
+            transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height },
+            status: 'skipped (fallback)',
+            note: 'Fallback mode — existing OBS source will not be modified.',
+          };
+        }
 
         if (layer.type === 'video') {
           obsKind = 'ffmpeg_source';
@@ -734,6 +751,14 @@ export function registerObsRoutes(app) {
         for (const layer of orderedLayers) {
           const sourceName = `SE-${layer.id}`.slice(0, 100);
           const result = { layerId: layer.id, sourceName, type: layer.type, status: 'pending', note: '' };
+
+          // Fallback mode — leave existing OBS source untouched
+          if (layer.fallback) {
+            result.status = 'skipped';
+            result.note = 'Fallback mode — existing OBS source not modified.';
+            results.push(result);
+            continue;
+          }
 
           // Remove stale version of this source (idempotent apply)
           try { await obs.call('RemoveInput', { inputName: sourceName }); } catch { /* ok */ }
