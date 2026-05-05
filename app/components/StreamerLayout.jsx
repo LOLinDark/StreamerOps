@@ -2,6 +2,7 @@ import { AppShell, NavLink, Badge, Button, Stack, Title, Indicator, Text, Divide
 import { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { apiGet, useAppStore, useSettingsStore } from '../platform-core';
+import { IconTool } from '@tabler/icons-react';
 import DevFooter from './DevFooter';
 import DevPanel from './DevPanel';
 import BrandWordmark from './BrandWordmark';
@@ -61,6 +62,12 @@ export default function StreamerLayout() {
   const isActive = (route) => path === route || path.startsWith(route + '/');
 
   const [pageTitle, setPageTitle] = useState(null);
+  const devOnlyLabel = (label) => (
+    <Group gap={6} wrap="nowrap">
+      <IconTool size={14} color="#ff4d4f" />
+      <span>{label}</span>
+    </Group>
+  );
 
   // Reset page title on navigation so stale titles don't linger
   useEffect(() => {
@@ -183,12 +190,12 @@ export default function StreamerLayout() {
 
           <Divider my="xs" label="OBS" labelPosition="center" />
           <NavLink label="Connect to OBS" disabled description="obs-websocket" />
-          <NavLink label="Scene Control" disabled description="Coming soon" />
-          <NavLink label="Transitions" disabled description="Coming soon" />
+          {devMode && <NavLink label={devOnlyLabel('Scene Control')} disabled description="Hidden from public release" />}
+          {devMode && <NavLink label={devOnlyLabel('Transitions')} disabled description="Hidden from public release" />}
 
           <Divider my="xs" label="Stream" labelPosition="center" />
-          <NavLink label="Monitor" disabled description="Coming soon" />
-          <NavLink label="Schedule" disabled description="Coming soon" />
+          {devMode && <NavLink label={devOnlyLabel('Monitor')} disabled description="Hidden from public release" />}
+          {devMode && <NavLink label={devOnlyLabel('Schedule')} disabled description="Hidden from public release" />}
         </Stack>
       </AppShell.Navbar>
 

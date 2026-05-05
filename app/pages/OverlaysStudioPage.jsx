@@ -1,8 +1,10 @@
 import { Badge, Button, Card, Container, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import IncompleteFeatureBadge from '../components/IncompleteFeatureBadge';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { usePageTitle } from '../contexts/PageTitleContext';
+import { useAppStore } from '../stores';
 
 const tools = [
   {
@@ -58,6 +60,7 @@ const tools = [
 export default function OverlaysStudioPage() {
   const navigate = useNavigate();
   const { setPageTitle } = usePageTitle();
+  const devMode = useAppStore((s) => s.devMode);
 
   useEffect(() => {
     setPageTitle(<><DevTag tag="OV01" />Overlays Studio</>);
@@ -164,18 +167,20 @@ export default function OverlaysStudioPage() {
         </Card>
 
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-          {tools.map((tool) => (
+          {tools
+            .filter((tool) => tool.status === 'live' || devMode)
+            .map((tool) => (
             <Card key={tool.label} withBorder p="md">
               <Stack gap="sm">
                 <Group justify="space-between">
                   <Text fw={700}>{tool.label}</Text>
-                  <Badge
-                    color={tool.status === 'live' ? 'teal' : 'gray'}
-                    variant={tool.status === 'live' ? 'filled' : 'light'}
-                    size="sm"
-                  >
-                    {tool.status === 'live' ? 'Live' : 'Coming Soon'}
-                  </Badge>
+                  {tool.status === 'live' ? (
+                    <Badge color="teal" variant="filled" size="sm">
+                      Live
+                    </Badge>
+                  ) : (
+                    <IncompleteFeatureBadge />
+                  )}
                 </Group>
                 <Text size="sm" c="dimmed">{tool.desc}</Text>
                 {tool.path && (

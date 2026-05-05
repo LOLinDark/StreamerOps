@@ -1,9 +1,11 @@
 import { Container, Title, Card, Text, Stack, Badge, Group, Button, SimpleGrid, ActionIcon, Tooltip } from '@mantine/core';
 import DevTag from '../components/DevTag';
+import IncompleteFeatureBadge from '../components/IncompleteFeatureBadge';
 import { useEffect, useState } from 'react';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { useNavigate } from 'react-router-dom';
 import { IconArrowUp, IconArrowDown, IconGripVertical } from '@tabler/icons-react';
+import { useAppStore } from '../stores';
 
 const DEFAULT_TOOLS = [
   {
@@ -102,6 +104,7 @@ const DEFAULT_TOOLS = [
 export default function StreamerPage() {
   const { setPageTitle } = usePageTitle();
   const navigate = useNavigate();
+  const devMode = useAppStore((s) => s.devMode);
   const [tools, setTools] = useState(() => {
     // Load saved order from localStorage, or use default
     const saved = localStorage.getItem('streamer-tools-order');
@@ -155,7 +158,9 @@ export default function StreamerPage() {
         </Card>
 
         <Stack gap="md">
-          {tools.map((tool, index) => (
+          {tools
+            .filter((tool) => tool.status === 'live' || devMode)
+            .map((tool, index) => (
             <Card key={tool.id} withBorder p="md">
               <Stack gap="sm">
                 <Group justify="space-between">
@@ -170,13 +175,13 @@ export default function StreamerPage() {
                     </Group>
                   </Group>
                   <Group gap="xs" align="center">
-                    <Badge
-                      color={tool.status === 'live' ? 'teal' : 'gray'}
-                      variant={tool.status === 'live' ? 'filled' : 'light'}
-                      size="sm"
-                    >
-                      {tool.status === 'live' ? 'Live' : 'Coming Soon'}
-                    </Badge>
+                    {tool.status === 'live' ? (
+                      <Badge color="teal" variant="filled" size="sm">
+                        Live
+                      </Badge>
+                    ) : (
+                      <IncompleteFeatureBadge />
+                    )}
                     <Group gap={2}>
                       <Tooltip label="Move up" position="bottom">
                         <ActionIcon

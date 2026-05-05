@@ -3,8 +3,10 @@ import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SciFiFrame } from '../components/ui';
 import DevTag from '../components/DevTag';
+import IncompleteFeatureBadge from '../components/IncompleteFeatureBadge';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { getAssetUrl } from '../utils/pathUtils';
+import { useAppStore } from '../stores';
 
 // ═══════════════════════════════════════════════════════════════
 // WIREFRAME COMPONENTS
@@ -238,7 +240,7 @@ const getToolsArray = () => [
     alt: 'Technology Config - Streamer settings, hardware, and service integration controls',
     color: '#ff6b00',
     path: '/hotas-config',
-    enabled: true,
+    enabled: false,
   },
   {
     id: 'scene-editor',
@@ -322,18 +324,20 @@ const PlaceholderImage = ({ tool }) => {
 const ToolCard = ({ tool }) => {
   const navigate = useNavigate();
   const [imageLoaded, setImageLoaded] = React.useState(false);
+  const devMode = useAppStore((s) => s.devMode);
+  const isIncomplete = !tool.enabled;
 
   const handleClick = () => {
-    if (tool.enabled) {
+    if (tool.path && (tool.enabled || devMode)) {
       navigate(tool.path);
     }
   };
 
-  const disabledStyles = !tool.enabled ? {
+  const disabledStyles = isIncomplete && !devMode ? {
     opacity: 0.5,
     cursor: 'not-allowed',
   } : {
-    cursor: 'pointer',
+    cursor: tool.path ? 'pointer' : 'not-allowed',
   };
 
   return (
@@ -344,7 +348,7 @@ const ToolCard = ({ tool }) => {
         ...disabledStyles,
       }}
       onMouseEnter={(e) => {
-        if (tool.enabled) {
+        if (tool.path && (tool.enabled || devMode)) {
           e.currentTarget.style.transform = 'translateY(-8px)';
           e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 217, 255, 0.2)';
         }
@@ -379,34 +383,15 @@ const ToolCard = ({ tool }) => {
               <PlaceholderImage tool={tool} />
             )}
             
-            {/* Coming Soon banner */}
-            {!tool.enabled && (
+            {isIncomplete && (
               <div
                 style={{
                   position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'rgba(0, 0, 0, 0.7)',
-                  backdropFilter: 'blur(2px)',
+                  top: 10,
+                  right: 10,
                 }}
               >
-                <Text
-                  fw={700}
-                  size="lg"
-                  style={{
-                    color: tool.color,
-                    letterSpacing: '0.08em',
-                    textTransform: 'uppercase',
-                    textShadow: `0 0 10px ${tool.color}`,
-                  }}
-                >
-                  Coming Soon
-                </Text>
+                <IncompleteFeatureBadge label="Hidden from Public" />
               </div>
             )}
           </div>
@@ -417,6 +402,7 @@ const ToolCard = ({ tool }) => {
               <Text fw={700} style={{ color: tool.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {tool.title}
               </Text>
+              {isIncomplete && <IncompleteFeatureBadge />}
             </Group>
             <Text size="sm" c="dimmed" style={{ lineHeight: 1.5 }}>
               {tool.desc}
@@ -430,6 +416,7 @@ const ToolCard = ({ tool }) => {
 
 export default function MainDashboardPage() {
   const { setPageTitle } = usePageTitle();
+  const devMode = useAppStore((s) => s.devMode);
   useEffect(() => {
     setPageTitle(<><DevTag tag="APP01" />Verse Operations Hub</>);
     return () => setPageTitle(null);
@@ -437,6 +424,10 @@ export default function MainDashboardPage() {
   console.log('[OmniCore] MainDashboardPage rendered');
   // Evaluate TOOLS array at component render time (not module scope)
   const TOOLS = useMemo(() => getToolsArray(), []);
+  const visibleTools = useMemo(
+    () => TOOLS.filter((tool) => tool.enabled || devMode),
+    [TOOLS, devMode]
+  );
   
   return (
     <Container size="xl" py="xl">
@@ -455,7 +446,7 @@ export default function MainDashboardPage() {
           marginBottom: '2rem',
         }}
       >
-        {TOOLS.map((tool) => (
+        {visibleTools.map((tool) => (
           <ToolCard key={tool.id} tool={tool} />
         ))}
       </SimpleGrid>
