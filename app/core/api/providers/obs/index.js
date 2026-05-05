@@ -40,6 +40,6 @@ export async function setupObsWizardLogos({ sceneName, ...connection } = {}) {
   return apiPost('/api/obs/wizard/logos', { sceneName, ...connection });
 }
 
-export async function applySceneToObs({ sceneName, layers, ...connection } = {}) {
-  return apiPost('/api/obs/scene-editor/apply', { sceneName, layers, ...connection });
+export async function applySceneToObs({ sceneName, layers, sceneProfile, ...connection } = {}) {
+  return apiPost('/api/obs/scene-editor/apply', { sceneName, layers, sceneProfile, ...connection });
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { notifications } from '@mantine/notifications';
 import { applySceneToObs } from '../core/api/providers/obs';
+import { buildSceneProfileFromEditorLayers } from '../streamer/sceneModel';
 import DevTag from '../components/DevTag';
 import {
   ActionIcon,
@@ -170,6 +171,36 @@ function detectVars(source) {
 function resolveVars(source, vars) {
   if (!source || !vars || Object.keys(vars).length === 0) return source;
   return source.replace(/\{\{([a-zA-Z_][\w]*?)\}\}/g, (_, name) => vars[name] ?? `{{${name}}}`);
+}
+
+function formatDryRunAction(action) {
+  if (!action || typeof action !== 'object') {
+    return 'Unknown compiler action';
+  }
+
+  if (action.action === 'ensureScene') {
+    return `Ensure scene "${action.sceneName}"`;
+  }
+
+  if (action.action?.startsWith('ensure')) {
+    const target = action.sourceName || action.sourceId || 'source';
+    return `${action.action} ${target}${action.sourceKind ? ` (${action.sourceKind})` : ''}`;
+  }
+
+  if (action.action === 'setSceneItemTransform') {
+    const t = action.transform || {};
+    return `Set transform for ${action.sourceName}: x=${t.x} y=${t.y} ${t.width}x${t.height}`;
+  }
+
+  if (action.action === 'setSceneItemEnabled') {
+    return `${action.enabled ? 'Show' : 'Hide'} ${action.sourceName}`;
+  }
+
+  if (action.action === 'setSourceOpacity') {
+    return `Set opacity for ${action.sourceName}: ${Math.round(Number(action.opacity || 0) * 100)}%`;
+  }
+
+  return action.action || 'Compiler action';
 }
 
 // ─── Canvas scale helpers ─────────────────────────────────────────────────────
@@ -764,6 +795,9 @@ export default function SceneEditorPage() {
     const resolvedLayers = layers.map((l) =>
       l.type === 'text' ? { ...l, source: resolveVars(l.source, vars) } : l
     );
+    const sceneProfile = buildSceneProfileFromEditorLayers(resolvedLayers, {
+      sceneName: obsConfig.sceneName,
+    });
     setApplyState({ loading: true, lastResult: null });
     const notifId = notifications.show({
       id: 'obs-apply',
@@ -780,6 +814,7 @@ export default function SceneEditorPage() {
         password: obsConfig.password,
         sceneName: obsConfig.sceneName,
         layers: resolvedLayers,
+        sceneProfile,
       });
       setApplyState({ loading: false, lastResult: result });
       notifications.update({
@@ -811,12 +846,16 @@ export default function SceneEditorPage() {
       const resolvedLayers = layers.map((l) =>
         l.type === 'text' ? { ...l, source: resolveVars(l.source, vars) } : l
       );
+      const sceneProfile = buildSceneProfileFromEditorLayers(resolvedLayers, {
+        sceneName: obsConfig.sceneName,
+      });
       const result = await applySceneToObs({
         host: obsConfig.host,
         port: Number(obsConfig.port),
         password: obsConfig.password,
         sceneName: obsConfig.sceneName,
         layers: resolvedLayers,
+        sceneProfile,
         dryRun: true,
       });
       setDryRunState({ loading: false, result, open: true });
@@ -1202,13 +1241,48 @@ export default function SceneEditorPage() {
           }}
         >
           <Box px="md" py="xs" style={{ borderBottom: `1px solid ${PANEL_BORDER}` }}>
-            <Text size="xs" fw={600} style={{ color: PANEL_ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              Dry Run — {dryRunState.result.sceneName} — no OBS changes made
-            </Text>
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Text size="xs" fw={600} style={{ color: PANEL_ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                Dry Run — {dryRunState.result.sceneName} — no OBS changes made
+              </Text>
+              {dryRunState.result.schemaVersion && (
+                <Badge size="xs" color="violet" variant="outline" style={{ fontFamily: 'monospace', flexShrink: 0 }}>
+                  {dryRunState.result.schemaVersion}
+                </Badge>
+              )}
+            </Group>
           </Box>
           <Box p="sm">
             {dryRunState.result.error && (
               <Text size="xs" c="red">{dryRunState.result.error}</Text>
+            )}
+            {Array.isArray(dryRunState.result.warnings) && dryRunState.result.warnings.length > 0 && (
+              <Stack gap={3} mb="xs">
+                {dryRunState.result.warnings.map((warning) => (
+                  <Group key={warning} gap={6} wrap="nowrap">
+                    <Badge size="xs" color="orange" variant="outline" style={{ flexShrink: 0 }}>warning</Badge>
+                    <Text size="xs" c="orange" truncate>{warning}</Text>
+                  </Group>
+                ))}
+              </Stack>
+            )}
+            {Array.isArray(dryRunState.result.actions) && dryRunState.result.actions.length > 0 && (
+              <Stack gap={4} mb="xs">
+                <Text size="10px" style={{ color: `${PANEL_ACCENT}80`, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Compiler plan - {dryRunState.result.actions.length} actions
+                </Text>
+                {dryRunState.result.actions.map((action, index) => (
+                  <Group key={`${action.action}-${action.sourceId || action.sourceName || action.sceneName}-${index}`} gap={8} wrap="nowrap">
+                    <Badge size="xs" color="violet" variant="outline" style={{ flexShrink: 0, fontFamily: 'monospace' }}>
+                      {index + 1}
+                    </Badge>
+                    <Text size="xs" c="dimmed" truncate style={{ flex: 1, fontFamily: 'monospace' }}>
+                      {formatDryRunAction(action)}
+                    </Text>
+                  </Group>
+                ))}
+                <Divider style={{ borderColor: `${PANEL_ACCENT}20` }} />
+              </Stack>
             )}
             {Array.isArray(dryRunState.result.results) && (
               <Stack gap={4}>

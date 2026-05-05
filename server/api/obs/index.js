@@ -2,6 +2,11 @@ import OBSWebSocket from 'obs-websocket-js';
 import { createLogger } from '../../lib/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  buildSceneProfileFromEditorLayers,
+  compileSceneProfile,
+  normalizeSceneProfile,
+} from '../../../app/streamer/sceneModel.js';
 
 const logger = createLogger('api.obs');
 const DEFAULT_HOST = process.env.OBS_WS_HOST || '127.0.0.1';
@@ -13,7 +18,7 @@ const MAX_SCENE_NAME_LENGTH = 120;
 // Resolve absolute paths for assets
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '../../');
+const PROJECT_ROOT = path.resolve(__dirname, '../../../');
 const ASSETS_DIR = path.join(PROJECT_ROOT, 'public', 'assets');
 
 function sanitizeHost(value) {
@@ -634,102 +639,91 @@ export function registerObsRoutes(app) {
   app.post('/api/obs/scene-editor/apply', async (req, res) => {
     const input = normalizeConnectionInput(req.body);
     const sceneName = sanitizeSceneName(req.body?.sceneName);
-    const layers = req.body?.layers;
+    const layers = Array.isArray(req.body?.layers) ? req.body.layers : [];
+    const requestedProfile = req.body?.sceneProfile;
     const dryRun = Boolean(req.body?.dryRun);
 
-    if (!Array.isArray(layers) || layers.length === 0) {
-      return res.status(400).json({ success: false, error: 'layers array is required and must not be empty.' });
+    if ((!requestedProfile || typeof requestedProfile !== 'object') && layers.length === 0) {
+      return res.status(400).json({ success: false, error: 'sceneProfile or layers array is required and must not be empty.' });
     }
 
     const TEXT_KINDS = ['text_gdiplus_v3', 'text_gdiplus', 'text_ft2_source_v2', 'text_ft2_source'];
 
-    const sanitizeLayer = (layer) => ({
-      id: String(layer.id || '').slice(0, 80),
-      label: String(layer.label || '').slice(0, 120),
-      type: ['image', 'video', 'text', 'browser', 'audio'].includes(layer.type) ? layer.type : 'image',
-      visible: Boolean(layer.visible ?? true),
-      fallback: Boolean(layer.fallback),
-      x: Number.isFinite(Number(layer.x)) ? Number(layer.x) : 0,
-      y: Number.isFinite(Number(layer.y)) ? Number(layer.y) : 0,
-      width: Number.isFinite(Number(layer.width)) ? Math.max(1, Number(layer.width)) : 100,
-      height: Number.isFinite(Number(layer.height)) ? Math.max(1, Number(layer.height)) : 100,
-      opacity: Number.isFinite(Number(layer.opacity)) ? Math.min(100, Math.max(0, Number(layer.opacity))) : 100,
-      source: typeof layer.source === 'string' ? layer.source.slice(0, 1024) : '',
-    });
+    const resolveSceneSourcePath = (source) => {
+      if (source.type === 'browser') {
+        return /^https?:\/\//.test(source.url || '') ? source.url : 'about:blank';
+      }
 
-    const sanitizedLayers = layers.map(sanitizeLayer);
+      if (source.type === 'text') {
+        return String(source.template || '');
+      }
+
+      const asset = source.asset || {};
+      const rawPath = String(asset.path || '');
+
+      if (!rawPath || asset.kind === 'previewOnly') {
+        return '';
+      }
+
+      if (asset.kind === 'publicAsset' || rawPath.startsWith('/assets/')) {
+        return path.join(ASSETS_DIR, rawPath.replace(/^\/assets\//, ''));
+      }
+
+      return rawPath;
+    };
+
+    const sourceToApplyLayer = (source) => {
+      const transform = source.transform || {};
+      return {
+        id: String(source.id || '').slice(0, 80),
+        label: String(source.label || '').slice(0, 120),
+        sourceName: String(source.obs?.sourceName || `SE-${source.id}`).slice(0, 100),
+        type: source.type === 'media' ? 'video' : source.type,
+        visible: Boolean(source.enabled ?? true),
+        fallback: Boolean(source.metadata?.fallback),
+        x: Number.isFinite(Number(transform.x)) ? Number(transform.x) : 0,
+        y: Number.isFinite(Number(transform.y)) ? Number(transform.y) : 0,
+        width: Number.isFinite(Number(transform.width)) ? Math.max(1, Number(transform.width)) : 100,
+        height: Number.isFinite(Number(transform.height)) ? Math.max(1, Number(transform.height)) : 100,
+        opacity: Number.isFinite(Number(transform.opacity)) ? Math.min(100, Math.max(0, Number(transform.opacity) * 100)) : 100,
+        source: resolveSceneSourcePath(source),
+      };
+    };
+
+    const sceneProfile = requestedProfile && typeof requestedProfile === 'object'
+      ? normalizeSceneProfile(requestedProfile, { layers, sceneName })
+      : buildSceneProfileFromEditorLayers(layers, { sceneName });
+    sceneProfile.target.sceneName = sceneName;
+
+    const scenePlan = compileSceneProfile(sceneProfile, { resolveAssetPath: resolveSceneSourcePath });
+    if (!scenePlan.valid) {
+      return res.status(400).json({
+        success: false,
+        mode: 'scene-editor-apply',
+        sceneName,
+        schemaVersion: scenePlan.schemaVersion,
+        errors: scenePlan.errors,
+        warnings: scenePlan.warnings,
+        error: scenePlan.errors.join(' '),
+      });
+    }
+
+    const sanitizedLayers = sceneProfile.sources.map(sourceToApplyLayer);
 
     // ── Dry-run path ─────────────────────────────────────────────────────────
     if (dryRun) {
-      const dryResults = sanitizedLayers.map((layer) => {
-        const sourceName = `SE-${layer.id}`.slice(0, 100);
-        let obsKind = null;
-        let resolvedPath = null;
-        let note = '';
-
-        if (layer.fallback) {
-          return {
-            layerId: layer.id,
-            label: layer.label,
-            sourceName,
-            type: layer.type,
-            obsKind: null,
-            resolvedPath: null,
-            visible: layer.visible,
-            opacity: layer.opacity,
-            transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height },
-            status: 'skipped (fallback)',
-            note: 'Fallback mode — existing OBS source will not be modified.',
-          };
-        }
-
-        if (layer.type === 'video') {
-          obsKind = 'ffmpeg_source';
-          resolvedPath = layer.source.startsWith('/') || /^[A-Za-z]:[\\/]/.test(layer.source) ? layer.source : '(no local path — must be set in OBS after apply)';
-          note = `Media source at x=${layer.x} y=${layer.y} ${layer.width}×${layer.height}`;
-        } else if (layer.type === 'image') {
-          obsKind = 'image_source';
-          resolvedPath = layer.source.startsWith('/') || /^[A-Za-z]:[\\/]/.test(layer.source)
-            ? layer.source
-            : `(assets dir)/${layer.source.replace(/^\/assets\//, '')}`;
-          note = `Image source at x=${layer.x} y=${layer.y} ${layer.width}×${layer.height}`;
-        } else if (layer.type === 'text') {
-          obsKind = TEXT_KINDS[0];
-          resolvedPath = null;
-          note = `Text "${layer.source.slice(0, 60)}${layer.source.length > 60 ? '…' : ''}" at x=${layer.x} y=${layer.y}`;
-        } else if (layer.type === 'browser') {
-          obsKind = 'browser_source';
-          resolvedPath = /^https?:\/\//.test(layer.source) ? layer.source : 'about:blank';
-          note = `Browser ${layer.width}×${layer.height} → ${resolvedPath}`;
-        } else if (layer.type === 'audio') {
-          obsKind = 'ffmpeg_source';
-          resolvedPath = layer.source;
-          note = 'Audio/media source (no canvas transform)';
-        }
-
-        return {
-          layerId: layer.id,
-          label: layer.label,
-          sourceName,
-          type: layer.type,
-          obsKind,
-          resolvedPath,
-          visible: layer.visible,
-          opacity: layer.opacity,
-          transform: { x: layer.x, y: layer.y, width: layer.width, height: layer.height },
-          status: 'dry-run',
-          note,
-        };
-      });
-
       return res.json({
         success: true,
         mode: 'scene-editor-apply',
         dryRun: true,
+        schemaVersion: scenePlan.schemaVersion,
+        profileId: scenePlan.profileId,
         sceneName,
+        warnings: scenePlan.warnings,
+        actions: scenePlan.actions,
         totalLayers: sanitizedLayers.length,
         totalApplied: 0,
-        results: dryResults,
+        results: scenePlan.results,
       });
     }
 
@@ -745,11 +739,110 @@ export function registerObsRoutes(app) {
 
         const results = [];
 
+        const inputExists = async (inputName) => {
+          const inputList = await obs.call('GetInputList');
+          return (inputList?.inputs || []).some((item) => item.inputName === inputName);
+        };
+
+        const getSceneItem = async (sourceName) => {
+          const sceneItems = await obs.call('GetSceneItemList', { sceneName });
+          return (sceneItems?.sceneItems || []).find((item) => item.sourceName === sourceName) || null;
+        };
+
+        const ensureSceneItem = async (sourceName, visible) => {
+          let item = await getSceneItem(sourceName);
+          let sceneItemCreated = false;
+
+          if (!item) {
+            try {
+              await obs.call('CreateSceneItem', {
+                sceneName,
+                sourceName,
+                sceneItemEnabled: visible,
+              });
+              sceneItemCreated = true;
+              item = await getSceneItem(sourceName);
+            } catch {
+              // Some OBS-compatible targets may not expose CreateSceneItem.
+            }
+          }
+
+          if (item) {
+            await obs.call('SetSceneItemEnabled', {
+              sceneName,
+              sceneItemId: item.sceneItemId,
+              sceneItemEnabled: visible,
+            });
+          }
+
+          return { item, sceneItemCreated };
+        };
+
+        const ensureInput = async ({ sourceName, inputKind, inputSettings, visible, createKinds }) => {
+          const exists = await inputExists(sourceName);
+
+          if (exists) {
+            await obs.call('SetInputSettings', {
+              inputName: sourceName,
+              inputSettings,
+              overlay: true,
+            });
+            const sceneItemResult = await ensureSceneItem(sourceName, visible);
+            return {
+              created: false,
+              updated: true,
+              inputKind,
+              ...sceneItemResult,
+            };
+          }
+
+          if (Array.isArray(createKinds) && createKinds.length > 0) {
+            let lastError = null;
+            for (const candidateKind of createKinds) {
+              try {
+                await obs.call('CreateInput', {
+                  sceneName,
+                  inputName: sourceName,
+                  inputKind: candidateKind,
+                  inputSettings,
+                  sceneItemEnabled: visible,
+                });
+                const sceneItemResult = await ensureSceneItem(sourceName, visible);
+                return {
+                  created: true,
+                  updated: false,
+                  inputKind: candidateKind,
+                  ...sceneItemResult,
+                };
+              } catch (error) {
+                lastError = error;
+              }
+            }
+
+            throw lastError || new Error(`Unable to create input "${sourceName}"`);
+          }
+
+          await obs.call('CreateInput', {
+            sceneName,
+            inputName: sourceName,
+            inputKind,
+            inputSettings,
+            sceneItemEnabled: visible,
+          });
+          const sceneItemResult = await ensureSceneItem(sourceName, visible);
+          return {
+            created: true,
+            updated: false,
+            inputKind,
+            ...sceneItemResult,
+          };
+        };
+
         // Process layers bottom-first so z-order in OBS matches visual stack
         const orderedLayers = [...sanitizedLayers].reverse();
 
         for (const layer of orderedLayers) {
-          const sourceName = `SE-${layer.id}`.slice(0, 100);
+          const sourceName = String(layer.sourceName || `SE-${layer.id}`).slice(0, 100);
           const result = { layerId: layer.id, sourceName, type: layer.type, status: 'pending', note: '' };
 
           // Fallback mode — leave existing OBS source untouched
@@ -760,83 +853,65 @@ export function registerObsRoutes(app) {
             continue;
           }
 
-          // Remove stale version of this source (idempotent apply)
-          try { await obs.call('RemoveInput', { inputName: sourceName }); } catch { /* ok */ }
-
           try {
+            let ensureResult = null;
+
             if (layer.type === 'video') {
               // Resolve source: only allow filesystem paths (not blob: or http: for OBS)
               const filePath = layer.source.startsWith('/') || /^[A-Za-z]:[\\/]/.test(layer.source)
                 ? layer.source.replace(/\//g, '\\')
                 : '';
 
-              await obs.call('CreateInput', {
-                sceneName,
-                inputName: sourceName,
+              ensureResult = await ensureInput({
+                sourceName,
                 inputKind: 'ffmpeg_source',
                 inputSettings: { local_file: filePath, looping: true, hw_decode: false },
-                sceneItemEnabled: layer.visible,
+                visible: layer.visible,
               });
-              result.note = filePath ? `Video source set to ${filePath}` : 'Video source created (no local path — set file in OBS)';
+              result.note = filePath ? `Video source set to ${filePath}` : 'Video source ensured (no local path - set file in OBS)';
 
             } else if (layer.type === 'image') {
               const filePath = layer.source.startsWith('/') || /^[A-Za-z]:[\\/]/.test(layer.source)
                 ? layer.source.replace(/\//g, '\\')
                 : path.join(ASSETS_DIR, layer.source.replace(/^\/assets\//, ''));
 
-              await obs.call('CreateInput', {
-                sceneName,
-                inputName: sourceName,
+              ensureResult = await ensureInput({
+                sourceName,
                 inputKind: 'image_source',
                 inputSettings: { file: filePath },
-                sceneItemEnabled: layer.visible,
+                visible: layer.visible,
               });
               result.note = `Image source set to ${filePath}`;
 
             } else if (layer.type === 'text') {
-              let usedKind = null;
-              for (const kind of TEXT_KINDS) {
-                try {
-                  await obs.call('CreateInput', {
-                    sceneName,
-                    inputName: sourceName,
-                    inputKind: kind,
-                    inputSettings: { text: layer.source },
-                    sceneItemEnabled: layer.visible,
-                  });
-                  usedKind = kind;
-                  break;
-                } catch { /* try next */ }
-              }
-              if (!usedKind) {
-                result.status = 'skipped';
-                result.note = 'No supported text source kind found';
-                results.push(result);
-                continue;
-              }
-              result.note = `Text source created with kind ${usedKind}`;
+              ensureResult = await ensureInput({
+                sourceName,
+                inputKind: TEXT_KINDS[0],
+                inputSettings: { text: layer.source },
+                visible: layer.visible,
+                createKinds: TEXT_KINDS,
+              });
+              result.note = `Text source set with kind ${ensureResult.inputKind}`;
 
             } else if (layer.type === 'browser') {
               const url = /^https?:\/\//.test(layer.source) ? layer.source : 'about:blank';
-              await obs.call('CreateInput', {
-                sceneName,
-                inputName: sourceName,
+              ensureResult = await ensureInput({
+                sourceName,
                 inputKind: 'browser_source',
                 inputSettings: { url, width: layer.width, height: layer.height, fps: 30, shutdown: false },
-                sceneItemEnabled: layer.visible,
+                visible: layer.visible,
               });
               result.note = `Browser source set to ${url}`;
 
             } else if (layer.type === 'audio') {
               // Audio has no canvas position; just create a media source stub
-              await obs.call('CreateInput', {
-                sceneName,
-                inputName: sourceName,
+              ensureResult = await ensureInput({
+                sourceName,
                 inputKind: 'ffmpeg_source',
                 inputSettings: { local_file: layer.source, looping: true, hw_decode: false },
-                sceneItemEnabled: layer.visible,
+                visible: layer.visible,
               });
-              result.note = 'Audio/media source created';
+              result.note = 'Audio/media source ensured';
 
             } else {
               result.status = 'skipped';
@@ -845,9 +920,12 @@ export function registerObsRoutes(app) {
               continue;
             }
 
+            result.operation = ensureResult?.created ? 'created' : 'updated';
+            result.inputKind = ensureResult?.inputKind || null;
+            result.sceneItemCreated = Boolean(ensureResult?.sceneItemCreated);
+
             // Apply position and size transform
-            const sceneItems = await obs.call('GetSceneItemList', { sceneName });
-            const item = (sceneItems?.sceneItems || []).find((si) => si.sourceName === sourceName);
+            const item = ensureResult?.item || await getSceneItem(sourceName);
             if (item) {
               const sceneItemTransform = {
                 positionX: layer.x,
@@ -866,10 +944,10 @@ export function registerObsRoutes(app) {
                 });
               }
 
-              // Apply opacity via filter if not 100%
+              // Reset stale opacity filters before adding the current one.
+              const filterName = `${sourceName}-opacity`;
+              try { await obs.call('RemoveSourceFilter', { sourceName, filterName }); } catch { /* ok */ }
               if (layer.opacity < 100) {
-                const filterName = `${sourceName}-opacity`;
-                try { await obs.call('RemoveSourceFilter', { sourceName, filterName }); } catch { /* ok */ }
                 await obs.call('CreateSourceFilter', {
                   sourceName,
                   filterName,
@@ -879,7 +957,12 @@ export function registerObsRoutes(app) {
               }
             }
 
-            result.status = 'ok';
+            if (!item && layer.type !== 'audio') {
+              result.status = 'error';
+              result.note = `${result.note}; source settings updated but no scene item was found in "${sceneName}".`;
+            } else {
+              result.status = 'ok';
+            }
           } catch (layerError) {
             result.status = 'error';
             result.note = String(layerError?.message || layerError);
@@ -894,7 +977,7 @@ export function registerObsRoutes(app) {
           success: true,
           mode: 'scene-editor-apply',
           sceneName,
-          totalLayers: layers.length,
+          totalLayers: sanitizedLayers.length,
           totalApplied: totalOk,
           results,
         };
