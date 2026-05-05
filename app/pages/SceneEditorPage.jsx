@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePageTitle } from '../contexts/PageTitleContext';
 import { notifications } from '@mantine/notifications';
 import { applySceneToObs } from '../core/api/providers/obs';
-import { buildSceneProfileFromEditorLayers } from '../streamer/sceneModel';
+import { buildEditorLayersFromSceneProfile, buildSceneProfileFromEditorLayers } from '../streamer/sceneModel';
+import { loadSequenceLibrary } from '../streamer/sequenceLibrary';
 import DevTag from '../components/DevTag';
 import {
   ActionIcon,
@@ -19,6 +20,9 @@ import {
   Divider,
   Switch,
   Button,
+  Select,
+  Menu,
+  ColorInput,
 } from '@mantine/core';
 import {
   IconEye,
@@ -35,6 +39,14 @@ import {
   IconChevronDown,
   IconPlus,
   IconRefresh,
+  IconPlayerPlay,
+  IconPlayerPause,
+  IconPlayerSkipBack,
+  IconPlayerSkipForward,
+  IconDownload,
+  IconUpload,
+  IconTrash,
+  IconCopy,
 } from '@tabler/icons-react';
 
 // ─── Resizable divider ────────────────────────────────────────────────────────
@@ -102,6 +114,28 @@ const LAYER_COLORS = {
   group:   'gray',
 };
 
+const GROUP_LABELS = {
+  playout: 'Playout',
+  branding: 'Branding',
+  titles: 'Titles',
+  disclaimers: 'Disclaimers',
+  overlays: 'Overlays',
+  audio: 'Audio',
+};
+
+const GROUP_OPTIONS = Object.entries(GROUP_LABELS).map(([value, label]) => ({ value, label }));
+const FONT_WEIGHT_OPTIONS = [
+  { value: '400', label: 'Regular' },
+  { value: '600', label: 'Semibold' },
+  { value: '700', label: 'Bold' },
+  { value: '800', label: 'Extra bold' },
+];
+const TEXT_ALIGN_OPTIONS = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'right', label: 'Right' },
+];
+
 // ─── Initial example scene ────────────────────────────────────────────────────
 const INITIAL_LAYERS = [
   {
@@ -113,6 +147,7 @@ const INITIAL_LAYERS = [
     x: 0, y: 0, width: 1920, height: 1080,
     opacity: 100,
     source: '/assets/video/bg-placeholder.mp4',
+    group: 'playout',
   },
   {
     id: 'logo-left',
@@ -124,6 +159,7 @@ const INITIAL_LAYERS = [
     opacity: 92,
     source: '/assets/images/star-citizen/starcitizen-logo-white.png',
     fallback: false,
+    group: 'branding',
   },
   {
     id: 'logo-right',
@@ -135,6 +171,7 @@ const INITIAL_LAYERS = [
     opacity: 92,
     source: '/assets/images/star-citizen/MadeByTheCommunity_White.png',
     fallback: false,
+    group: 'branding',
   },
   {
     id: 'title-text',
@@ -144,7 +181,8 @@ const INITIAL_LAYERS = [
     locked: false,
     x: 800, y: 24, width: 320, height: 40,
     opacity: 100,
-    source: 'Aegis Dynamics — Retaliator',
+    source: 'Now playing: {{currentTitle}}',
+    group: 'titles',
   },
   {
     id: 'disclaimer',
@@ -155,10 +193,36 @@ const INITIAL_LAYERS = [
     x: 0, y: 1048, width: 1920, height: 32,
     opacity: 70,
     source: 'Star Citizen is in development. Content subject to change.',
+    group: 'disclaimers',
   },
 ];
 
 const STORAGE_KEY = 'scene-editor-state-v1';
+const PLAYLIST_STORAGE_KEY = 'scene-editor-playlist-state-v1';
+const DEFAULT_VIDEO_LAYER_ID = 'bg-video';
+const NEXT_VIDEO_LAYER_ID = 'next-playlist-video';
+
+function loadStoredPlaylistState() {
+  if (typeof window === 'undefined') {
+    return { playlistId: '', itemIndex: 0, playing: false };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PLAYLIST_STORAGE_KEY);
+    if (!raw) {
+      return { playlistId: '', itemIndex: 0, playing: false };
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      playlistId: String(parsed.playlistId || ''),
+      itemIndex: Number.isFinite(Number(parsed.itemIndex)) ? Number(parsed.itemIndex) : 0,
+      playing: Boolean(parsed.playing),
+    };
+  } catch {
+    return { playlistId: '', itemIndex: 0, playing: false };
+  }
+}
 
 // ─── Variable substitution ───────────────────────────────────────────────────
 // Text layers support {{varName}} tokens. detectVars extracts unique names.
@@ -200,6 +264,19 @@ function formatDryRunAction(action) {
     return `Set opacity for ${action.sourceName}: ${Math.round(Number(action.opacity || 0) * 100)}%`;
   }
 
+  if (action.action === 'setInputAudioProfile') {
+    return `Set audio profile for ${action.sourceName}: ${action.profile}, muted=${action.muted}`;
+  }
+
+  if (action.action === 'setMediaPlaybackState') {
+    return `Set media state for ${action.sourceName}: ${action.state}`;
+  }
+
+  if (action.action === 'setTextStyle') {
+    const style = action.style || {};
+    return `Set text style for ${action.sourceName}: ${style.fontFamily || 'default'} ${style.fontSize || 'auto'}px`;
+  }
+
   return action.action || 'Compiler action';
 }
 
@@ -209,7 +286,170 @@ const DESIGN_H = 1080;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+function getLayerGroup(layer) {
+  if (layer?.group) {
+    return String(layer.group);
+  }
+
+  if (layer?.type === 'video') return 'playout';
+  if (layer?.type === 'image') return 'branding';
+  if (layer?.type === 'text') return layer?.id === 'disclaimer' ? 'disclaimers' : 'titles';
+  if (layer?.type === 'audio') return 'audio';
+  return 'overlays';
+}
+
+function getGroupLabel(groupId) {
+  return GROUP_LABELS[groupId] || groupId.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function createExportName(sceneName) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const slug = String(sceneName || 'scene-editor')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'scene-editor';
+  return `${slug}-${stamp}.json`;
+}
+
+function createLayerId(type) {
+  return `${type}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
+}
+
+function createObsSourceName(layer) {
+  const label = String(layer?.label || layer?.id || 'source')
+    .replace(/[^\w\s-]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 64) || 'source';
+  const suffix = String(layer?.id || '').split('-').pop();
+  return `SE-${label}${suffix ? `-${suffix}` : ''}`;
+}
+
+function createDefaultEditorLayer(type, index = 0) {
+  const id = createLayerId(type);
+  const offset = (index % 8) * 24;
+
+  if (type === 'image') {
+    return {
+      id,
+      label: 'Image Layer',
+      type: 'image',
+      visible: true,
+      locked: false,
+      group: 'branding',
+      x: 80 + offset,
+      y: 80 + offset,
+      width: 320,
+      height: 120,
+      opacity: 100,
+      source: '/assets/images/star-citizen/starcitizen-logo-white.png',
+      fallback: false,
+      obs: {
+        sourceName: createObsSourceName({ id, label: 'Image Layer' }),
+      },
+    };
+  }
+
+  if (type === 'video') {
+    return {
+      id,
+      label: 'Video Layer',
+      type: 'video',
+      visible: true,
+      locked: false,
+      group: 'playout',
+      x: 0,
+      y: 0,
+      width: 1920,
+      height: 1080,
+      opacity: 100,
+      source: '/assets/video/bg-placeholder.mp4',
+      obs: {
+        sourceName: createObsSourceName({ id, label: 'Video Layer' }),
+      },
+      audio: {
+        profile: 'live-program',
+        muted: false,
+        monitoring: 'monitorOff',
+      },
+    };
+  }
+
+  if (type === 'browser') {
+    return {
+      id,
+      label: 'Browser Overlay',
+      type: 'browser',
+      visible: true,
+      locked: false,
+      group: 'overlays',
+      x: 120 + offset,
+      y: 120 + offset,
+      width: 640,
+      height: 360,
+      opacity: 100,
+      source: 'about:blank',
+      obs: {
+        sourceName: createObsSourceName({ id, label: 'Browser Overlay' }),
+      },
+    };
+  }
+
+  if (type === 'audio') {
+    return {
+      id,
+      label: 'Audio Source',
+      type: 'audio',
+      visible: true,
+      locked: true,
+      group: 'audio',
+      x: 0,
+      y: 0,
+      width: 240,
+      height: 80,
+      opacity: 100,
+      source: '',
+      obs: {
+        sourceName: createObsSourceName({ id, label: 'Audio Source' }),
+      },
+      audio: {
+        profile: 'preview-muted',
+        muted: true,
+        monitoring: 'monitorOff',
+      },
+    };
+  }
+
+  return {
+    id,
+    label: 'Text Overlay',
+    type: 'text',
+    visible: true,
+    locked: false,
+    group: 'titles',
+    x: 96 + offset,
+    y: 880 + offset,
+    width: 720,
+    height: 72,
+    opacity: 100,
+    source: 'New overlay text',
+    obs: {
+      sourceName: createObsSourceName({ id, label: 'Text Overlay' }),
+    },
+    style: {
+      fontFamily: 'Inter',
+      fontSize: 42,
+      fontWeight: 700,
+      color: '#f4fbff',
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      textAlign: 'left',
+    },
+  };
+}
+
 function LayerContent({ layer, selected, scaleY, vars }) {
+  const layerStyle = layer.style && typeof layer.style === 'object' ? layer.style : {};
   const commonFill = {
     width: '100%',
     height: '100%',
@@ -249,25 +489,33 @@ function LayerContent({ layer, selected, scaleY, vars }) {
   }
 
   if (layer.type === 'text') {
+    const textAlign = layerStyle.textAlign || (layer.width > 600 ? 'center' : 'left');
+    const justifyContent = textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start';
+    const backgroundColor = layerStyle.backgroundColor === 'transparent'
+      ? 'transparent'
+      : (layerStyle.backgroundColor || (layer.id === 'disclaimer' ? 'linear-gradient(90deg, rgba(5,12,22,0.68), rgba(7,18,34,0.88), rgba(5,12,22,0.68))' : 'transparent'));
+
     return (
       <div
         style={{
           ...commonFill,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: layer.width > 600 ? 'center' : 'flex-start',
+          justifyContent,
           padding: `${Math.max(4, 10 * scaleY)}px ${Math.max(6, 14 * scaleY)}px`,
-          color: '#f4fbff',
-          fontWeight: 700,
-          fontSize: Math.max(10, layer.height * scaleY * 0.62),
+          color: layerStyle.color || '#f4fbff',
+          fontFamily: layerStyle.fontFamily || 'inherit',
+          fontWeight: layerStyle.fontWeight || 700,
+          fontSize: Math.max(10, Number(layerStyle.fontSize || 0) > 0 ? Number(layerStyle.fontSize) * scaleY : layer.height * scaleY * 0.62),
           letterSpacing: layer.id === 'disclaimer' ? '0.08em' : '0.03em',
           textTransform: layer.id === 'disclaimer' ? 'uppercase' : 'none',
           textShadow: '0 0 12px rgba(76,201,240,0.35)',
-          background: layer.id === 'disclaimer' ? 'linear-gradient(90deg, rgba(5,12,22,0.68), rgba(7,18,34,0.88), rgba(5,12,22,0.68))' : 'transparent',
+          background: backgroundColor,
           // resolved below
           overflow: 'hidden',
           whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
+          textAlign,
         }}
       >
         {resolveVars(layer.source, vars)}
@@ -385,6 +633,8 @@ function CanvasLayer({ layer, selected, onSelect, onDragStart, canvasW, canvasH,
 
 // ─── Layer list item ──────────────────────────────────────────────────────────
 function LayerItem({ layer, selected, onSelect, onToggleVisible, onToggleLock, onMoveUp, onMoveDown, isFirst, isLast }) {
+  const groupId = getLayerGroup(layer);
+
   return (
     <Box
       onClick={() => onSelect(layer.id)}
@@ -410,6 +660,9 @@ function LayerItem({ layer, selected, onSelect, onToggleVisible, onToggleLock, o
           {layer.type === 'image' && layer.fallback && (
             <Badge color="orange" variant="outline" size="xs" style={{ flexShrink: 0 }}>fallback</Badge>
           )}
+          <Badge color="gray" variant="outline" size="xs" style={{ flexShrink: 0 }}>
+            {getGroupLabel(groupId)}
+          </Badge>
           <Text size="xs" truncate style={{ minWidth: 0 }}>{layer.label}</Text>
         </Group>
         <Group gap={2} wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -439,8 +692,43 @@ function LayerItem({ layer, selected, onSelect, onToggleVisible, onToggleLock, o
   );
 }
 
+function OverlayGroupsPanel({ groups, onToggleGroup, onSoloGroup }) {
+  if (!groups.length) {
+    return null;
+  }
+
+  return (
+    <Stack gap={6}>
+      <Group justify="space-between" align="center" wrap="nowrap">
+        <Text size="xs" fw={600} style={{ color: '#4cc9f0', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Source Groups
+        </Text>
+        <Badge size="xs" color="cyan" variant="outline">{groups.length}</Badge>
+      </Group>
+      {groups.map((group) => (
+        <Group key={group.id} justify="space-between" gap={6} wrap="nowrap">
+          <Stack gap={0} style={{ minWidth: 0 }}>
+            <Text size="xs" truncate>{group.label}</Text>
+            <Text size="10px" c="dimmed">{group.visibleCount}/{group.count} visible</Text>
+          </Stack>
+          <Group gap={4} wrap="nowrap">
+            <Button size="compact-xs" variant="subtle" color="violet" onClick={() => onSoloGroup(group.id)}>
+              Solo
+            </Button>
+            <Switch
+              size="xs"
+              checked={group.visibleCount > 0}
+              onChange={(event) => onToggleGroup(group.id, event.currentTarget.checked)}
+            />
+          </Group>
+        </Group>
+      ))}
+    </Stack>
+  );
+}
+
 // ─── Properties panel ─────────────────────────────────────────────────────────
-function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile, vars, onSetVar }) {
+function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile, onDuplicateLayer, onDeleteLayer, vars, onSetVar }) {
   const PANEL_ACCENT = '#4cc9f0';
   const fileInputRef = useRef(null);
 
@@ -454,8 +742,15 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
   }
 
   const set = (key, value) => onUpdate(layer.id, { [key]: value });
+  const setNested = (key, value, parentKey) => onUpdate(layer.id, {
+    [parentKey]: {
+      ...((layer[parentKey] && typeof layer[parentKey] === 'object') ? layer[parentKey] : {}),
+      [key]: value,
+    },
+  });
   const isFileBackedLayer = layer.type === 'image' || layer.type === 'video';
   const fileAccept = layer.type === 'image' ? 'image/*' : layer.type === 'video' ? 'video/*' : undefined;
+  const obsSourceName = layer.obs?.sourceName || `SE-${layer.id}`;
 
   return (
     <ScrollArea style={{ height: '100%' }}>
@@ -474,6 +769,23 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
           size="xs"
           value={layer.label}
           onChange={(e) => set('label', e.currentTarget.value)}
+          styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+        />
+        <Select
+          label="Source group"
+          size="xs"
+          value={getLayerGroup(layer)}
+          onChange={(value) => set('group', value || getLayerGroup(layer))}
+          data={GROUP_OPTIONS}
+          styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+        />
+
+        <Divider label="OBS" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+        <TextInput
+          label="OBS source name"
+          size="xs"
+          value={obsSourceName}
+          onChange={(e) => set('obs', { ...(layer.obs || {}), sourceName: e.currentTarget.value })}
           styles={{ label: { color: `${PANEL_ACCENT}80` } }}
         />
 
@@ -519,7 +831,7 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
         <Divider label="Source" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
 
         <TextInput
-          label="Source path / value"
+          label={layer.type === 'browser' ? 'Browser URL' : layer.type === 'text' ? 'Text / template' : 'Source path / value'}
           size="xs"
           value={layer.source || ''}
           onChange={(e) => set('source', e.currentTarget.value)}
@@ -555,6 +867,43 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
           </>
         )}
 
+        {layer.type === 'video' && layer.playlistBinding && (
+          <>
+            <Divider label="Playlist Slot" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+            <Badge color="violet" variant="outline" size="xs" style={{ alignSelf: 'flex-start' }}>
+              {layer.playlistBinding.slot || 'current'}
+            </Badge>
+            <Text size="10px" style={{ color: `${PANEL_ACCENT}70` }}>
+              {layer.playlistBinding.playlistName || 'Playlist'} — {layer.playlistBinding.itemTitle || 'Untitled video'}
+            </Text>
+          </>
+        )}
+
+        {(layer.type === 'video' || layer.type === 'audio') && (
+          <>
+            <Divider label="Audio" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+            <Select
+              label="Audio profile"
+              size="xs"
+              value={layer.audio?.profile || 'live-program'}
+              onChange={(value) => set('audio', { ...(layer.audio || {}), profile: value || 'live-program' })}
+              data={[
+                { value: 'live-program', label: 'Live program' },
+                { value: 'preview-muted', label: 'Preview muted' },
+                { value: 'intermission-muted', label: 'Intermission muted' },
+              ]}
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
+            <Switch
+              label="Mute source on Apply"
+              size="xs"
+              checked={!!layer.audio?.muted}
+              onChange={(e) => set('audio', { ...(layer.audio || {}), muted: e.currentTarget.checked })}
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
+          </>
+        )}
+
         {layer.type === 'image' && (
           <>
             <Divider label="Migration" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
@@ -569,6 +918,37 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
             <Text size="10px" style={{ color: `${PANEL_ACCENT}60` }}>
               Enable to keep the existing OBS source untouched during Apply. Use for A/B comparison against the native image source.
             </Text>
+          </>
+        )}
+
+        {layer.type === 'browser' && (
+          <>
+            <Divider label="Browser Source" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+            <Group grow gap="xs">
+              <NumberInput
+                label="Browser W"
+                size="xs"
+                value={layer.browser?.width || layer.width}
+                onChange={(value) => set('browser', { ...(layer.browser || {}), width: Number(value) || layer.width })}
+                suffix="px"
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+              <NumberInput
+                label="Browser H"
+                size="xs"
+                value={layer.browser?.height || layer.height}
+                onChange={(value) => set('browser', { ...(layer.browser || {}), height: Number(value) || layer.height })}
+                suffix="px"
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+            </Group>
+            <Switch
+              label="Refresh when active"
+              size="xs"
+              checked={!!layer.browser?.restartWhenActive}
+              onChange={(event) => set('browser', { ...(layer.browser || {}), restartWhenActive: event.currentTarget.checked })}
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
           </>
         )}
 
@@ -595,6 +975,73 @@ function PropertiesPanel({ layer, onUpdate, onPickSourceFile, onClearSourceFile,
             </>
           );
         })()}
+
+        {layer.type === 'text' && (
+          <>
+            <Divider label="Text Style" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+            <TextInput
+              label="Font family"
+              size="xs"
+              value={layer.style?.fontFamily || 'Inter'}
+              onChange={(event) => setNested('fontFamily', event.currentTarget.value, 'style')}
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
+            <Group grow gap="xs">
+              <NumberInput
+                label="Font size"
+                size="xs"
+                value={Number(layer.style?.fontSize || 42)}
+                onChange={(value) => setNested('fontSize', Number(value) || 42, 'style')}
+                suffix="px"
+                min={8}
+                max={240}
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+              <Select
+                label="Weight"
+                size="xs"
+                value={String(layer.style?.fontWeight || '700')}
+                onChange={(value) => setNested('fontWeight', Number(value || 700), 'style')}
+                data={FONT_WEIGHT_OPTIONS}
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+            </Group>
+            <Select
+              label="Alignment"
+              size="xs"
+              value={layer.style?.textAlign || 'left'}
+              onChange={(value) => setNested('textAlign', value || 'left', 'style')}
+              data={TEXT_ALIGN_OPTIONS}
+              styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+            />
+            <Group grow gap="xs">
+              <ColorInput
+                label="Text color"
+                size="xs"
+                value={layer.style?.color || '#f4fbff'}
+                onChange={(value) => setNested('color', value || '#f4fbff', 'style')}
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+              <TextInput
+                label="Background"
+                size="xs"
+                value={layer.style?.backgroundColor || 'transparent'}
+                onChange={(event) => setNested('backgroundColor', event.currentTarget.value || 'transparent', 'style')}
+                styles={{ label: { color: `${PANEL_ACCENT}80` } }}
+              />
+            </Group>
+          </>
+        )}
+
+        <Divider label="Layer Actions" labelPosition="left" style={{ borderColor: `${PANEL_ACCENT}20` }} />
+        <Group grow>
+          <Button size="xs" variant="light" color="cyan" leftSection={<IconCopy size={14} />} onClick={() => onDuplicateLayer(layer.id)}>
+            Duplicate
+          </Button>
+          <Button size="xs" variant="subtle" color="red" leftSection={<IconTrash size={14} />} onClick={() => onDeleteLayer(layer.id)}>
+            Delete
+          </Button>
+        </Group>
       </Stack>
     </ScrollArea>
   );
@@ -619,6 +1066,10 @@ export default function SceneEditorPage() {
   });
   const [applyState, setApplyState] = useState({ loading: false, lastResult: null });
   const [dryRunState, setDryRunState] = useState({ loading: false, result: null, open: false });
+  const [savedSequences, setSavedSequences] = useState(() => (
+    typeof window === 'undefined' ? [] : loadSequenceLibrary()
+  ));
+  const [playlistState, setPlaylistState] = useState(loadStoredPlaylistState);
   const [vars, setVars] = useState(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -682,6 +1133,7 @@ export default function SceneEditorPage() {
   });
   const dragRef = useRef(null);
   const objectUrlRef = useRef(new Map());
+  const importInputRef = useRef(null);
   
   const canvasRef = (el) => {
     if (el && (el.offsetWidth !== canvasSize.w || el.offsetHeight !== canvasSize.h)) {
@@ -754,9 +1206,249 @@ export default function SceneEditorPage() {
   };
 
   const selectedLayer = layers.find((l) => l.id === selectedId) || null;
+  const playlistOptions = useMemo(() => savedSequences.map((entry) => ({
+    value: entry.id,
+    label: `${entry.name} (${entry.sequence.filter((item) => item.type === 'video').length} videos)`,
+  })), [savedSequences]);
+  const activePlaylist = useMemo(() => (
+    savedSequences.find((entry) => entry.id === playlistState.playlistId) || null
+  ), [playlistState.playlistId, savedSequences]);
+  const activeVideoItems = useMemo(() => (
+    (activePlaylist?.sequence || []).filter((item) => item?.type === 'video' && item?.source)
+  ), [activePlaylist]);
+  const activePlaylistIndex = activeVideoItems.length > 0
+    ? clamp(playlistState.itemIndex, 0, activeVideoItems.length - 1)
+    : 0;
+  const currentPlaylistItem = activeVideoItems[activePlaylistIndex] || null;
+  const nextPlaylistItem = activeVideoItems[activePlaylistIndex + 1] || null;
+  const targetVideoLayerId = selectedLayer?.type === 'video'
+    ? selectedLayer.id
+    : (layers.find((layer) => layer.type === 'video')?.id || DEFAULT_VIDEO_LAYER_ID);
+  const layerGroups = useMemo(() => {
+    const groupMap = new Map();
+    layers.forEach((layer) => {
+      const groupId = getLayerGroup(layer);
+      const current = groupMap.get(groupId) || {
+        id: groupId,
+        label: getGroupLabel(groupId),
+        count: 0,
+        visibleCount: 0,
+      };
+      current.count += 1;
+      if (layer.visible) {
+        current.visibleCount += 1;
+      }
+      groupMap.set(groupId, current);
+    });
+
+    return [...groupMap.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [layers]);
 
   const updateLayer = (id, changes) => {
     setLayers((prev) => prev.map((l) => l.id === id ? { ...l, ...changes } : l));
+  };
+
+  const addLayer = (type) => {
+    const nextLayer = createDefaultEditorLayer(type, layers.length);
+    setLayers((prev) => [...prev, nextLayer]);
+    setSelectedId(nextLayer.id);
+  };
+
+  const duplicateLayer = (id) => {
+    const sourceLayer = layers.find((layer) => layer.id === id);
+    if (!sourceLayer) {
+      return;
+    }
+
+  const nextLayer = {
+      ...sourceLayer,
+      id: createLayerId(sourceLayer.type),
+      label: `${sourceLayer.label} Copy`,
+      x: clamp(Number(sourceLayer.x || 0) + 32, 0, Math.max(0, DESIGN_W - Number(sourceLayer.width || 100))),
+      y: clamp(Number(sourceLayer.y || 0) + 32, 0, Math.max(0, DESIGN_H - Number(sourceLayer.height || 100))),
+      locked: false,
+      playlistBinding: undefined,
+    };
+    nextLayer.obs = {
+      ...(sourceLayer.obs || {}),
+      sourceName: createObsSourceName(nextLayer),
+    };
+
+    setLayers((prev) => {
+      const index = prev.findIndex((layer) => layer.id === id);
+      if (index < 0) {
+        return [...prev, nextLayer];
+      }
+
+      const next = [...prev];
+      next.splice(index + 1, 0, nextLayer);
+      return next;
+    });
+    setSelectedId(nextLayer.id);
+  };
+
+  const deleteLayer = (id) => {
+    setLayers((prev) => {
+      if (prev.length <= 1) {
+        return prev;
+      }
+
+      return prev.filter((layer) => layer.id !== id);
+    });
+    if (selectedId === id) {
+      setSelectedId(null);
+    }
+  };
+
+  const buildResolvedSceneProfile = () => {
+    const resolvedLayers = layers.map((layer) => (
+      layer.type === 'text' ? { ...layer, source: resolveVars(layer.source, vars) } : layer
+    ));
+
+    return {
+      resolvedLayers,
+      sceneProfile: buildSceneProfileFromEditorLayers(resolvedLayers, {
+        sceneName: obsConfig.sceneName,
+      }),
+    };
+  };
+
+  const setGroupVisible = (groupId, visible) => {
+    setLayers((prev) => prev.map((layer) => (
+      getLayerGroup(layer) === groupId ? { ...layer, visible } : layer
+    )));
+  };
+
+  const soloGroup = (groupId) => {
+    setLayers((prev) => prev.map((layer) => ({
+      ...layer,
+      visible: getLayerGroup(layer) === groupId,
+    })));
+  };
+
+  const bindPlaylistItemToVideoLayer = (item, itemIndex, playlist = activePlaylist, playbackState = playlistState.playing ? 'playing' : 'loaded') => {
+    if (!item || !playlist) {
+      return;
+    }
+
+    const layerId = targetVideoLayerId;
+    const playlistVideos = (playlist?.sequence || []).filter((entry) => entry?.type === 'video' && entry?.source);
+    const nextVideo = playlistVideos[itemIndex + 1] || null;
+    setLayers((prev) => {
+      const currentLayer = prev.find((layer) => layer.id === layerId);
+      const baseNextLayer = prev.find((layer) => layer.id === NEXT_VIDEO_LAYER_ID) || currentLayer;
+      let nextLayers = prev.map((layer) => {
+        if (layer.id !== layerId) {
+          return layer;
+        }
+
+        return {
+          ...layer,
+          source: item.source,
+          playlistBinding: {
+            slot: 'current',
+            playlistId: playlist.id,
+            playlistName: playlist.name,
+            itemId: item.id,
+            itemIndex,
+            itemTitle: item.title || `Video ${itemIndex + 1}`,
+            source: item.source,
+            playbackState,
+            nextItemId: nextVideo?.id || '',
+            nextItemTitle: nextVideo?.title || '',
+            nextItemSource: nextVideo?.source || '',
+          },
+          audio: {
+            ...(layer.audio || {}),
+            profile: layer.audio?.profile || 'live-program',
+            muted: Boolean(layer.audio?.muted),
+            monitoring: layer.audio?.monitoring || 'monitorOff',
+          },
+        };
+      });
+
+      if (!nextVideo) {
+        return nextLayers.filter((layer) => layer.id !== NEXT_VIDEO_LAYER_ID);
+      }
+
+      const nextLayer = {
+        ...(baseNextLayer || {}),
+        id: NEXT_VIDEO_LAYER_ID,
+        label: 'Next Playlist Video',
+        type: 'video',
+        visible: false,
+        locked: true,
+        group: 'playout',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        opacity: 100,
+        source: nextVideo.source,
+        playlistBinding: {
+          slot: 'next',
+          playlistId: playlist.id,
+          playlistName: playlist.name,
+          itemId: nextVideo.id,
+          itemIndex: itemIndex + 1,
+          itemTitle: nextVideo.title || `Video ${itemIndex + 2}`,
+          source: nextVideo.source,
+          playbackState: 'loaded',
+        },
+        audio: {
+          profile: 'preview-muted',
+          muted: true,
+          monitoring: 'monitorOff',
+        },
+      };
+
+      if (nextLayers.some((layer) => layer.id === NEXT_VIDEO_LAYER_ID)) {
+        return nextLayers.map((layer) => (layer.id === NEXT_VIDEO_LAYER_ID ? nextLayer : layer));
+      }
+
+      return [...nextLayers, nextLayer];
+    });
+    setVars((prev) => ({
+      ...prev,
+      playlistName: playlist.name || '',
+      currentTitle: item.title || `Video ${itemIndex + 1}`,
+      currentSource: item.source || '',
+      nextTitle: nextVideo?.title || '',
+    }));
+    setSelectedId(layerId);
+  };
+
+  const refreshPlaylists = () => {
+    setSavedSequences(loadSequenceLibrary());
+  };
+
+  const selectPlaylist = (playlistId) => {
+    const nextPlaylist = savedSequences.find((entry) => entry.id === playlistId) || null;
+    const firstVideo = (nextPlaylist?.sequence || []).find((item) => item?.type === 'video' && item?.source) || null;
+    setPlaylistState((prev) => ({ ...prev, playlistId: playlistId || '', itemIndex: 0, playing: false }));
+
+    if (firstVideo && nextPlaylist) {
+      bindPlaylistItemToVideoLayer(firstVideo, 0, nextPlaylist);
+    }
+  };
+
+  const loadPlaylistItem = (nextIndex) => {
+    if (!currentPlaylistItem || activeVideoItems.length === 0) {
+      return;
+    }
+
+    const boundedIndex = clamp(nextIndex, 0, activeVideoItems.length - 1);
+    const item = activeVideoItems[boundedIndex];
+    setPlaylistState((prev) => ({ ...prev, itemIndex: boundedIndex }));
+    bindPlaylistItemToVideoLayer(item, boundedIndex);
+  };
+
+  const togglePlaylistPlayback = () => {
+    const nextPlaying = !playlistState.playing;
+    setPlaylistState((prev) => ({ ...prev, playing: nextPlaying }));
+    if (currentPlaylistItem) {
+      bindPlaylistItemToVideoLayer(currentPlaylistItem, activePlaylistIndex, activePlaylist, nextPlaying ? 'playing' : 'paused');
+    }
   };
 
   const revokeObjectUrl = (id) => {
@@ -792,12 +1484,7 @@ export default function SceneEditorPage() {
   }, []);
 
   const handleApplyToObs = async () => {
-    const resolvedLayers = layers.map((l) =>
-      l.type === 'text' ? { ...l, source: resolveVars(l.source, vars) } : l
-    );
-    const sceneProfile = buildSceneProfileFromEditorLayers(resolvedLayers, {
-      sceneName: obsConfig.sceneName,
-    });
+    const { resolvedLayers, sceneProfile } = buildResolvedSceneProfile();
     setApplyState({ loading: true, lastResult: null });
     const notifId = notifications.show({
       id: 'obs-apply',
@@ -843,12 +1530,7 @@ export default function SceneEditorPage() {
   const handleDryRun = async () => {
     setDryRunState({ loading: true, result: null, open: true });
     try {
-      const resolvedLayers = layers.map((l) =>
-        l.type === 'text' ? { ...l, source: resolveVars(l.source, vars) } : l
-      );
-      const sceneProfile = buildSceneProfileFromEditorLayers(resolvedLayers, {
-        sceneName: obsConfig.sceneName,
-      });
+      const { resolvedLayers, sceneProfile } = buildResolvedSceneProfile();
       const result = await applySceneToObs({
         host: obsConfig.host,
         port: Number(obsConfig.port),
@@ -864,6 +1546,85 @@ export default function SceneEditorPage() {
     }
   };
 
+  const exportSceneProfile = () => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const { sceneProfile } = buildResolvedSceneProfile();
+    const exportDoc = {
+      ...sceneProfile,
+      metadata: {
+        ...(sceneProfile.metadata || {}),
+        exportedAt: new Date().toISOString(),
+        editorState: {
+          vars,
+          playlistState,
+        },
+      },
+    };
+    const blob = new Blob([JSON.stringify(exportDoc, null, 2)], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = createExportName(obsConfig.sceneName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  const importSceneProfile = async (file) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const importedLayers = buildEditorLayersFromSceneProfile(parsed);
+      if (!importedLayers.length) {
+        throw new Error('Imported scene profile did not contain any sources.');
+      }
+
+      objectUrlRef.current.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+      objectUrlRef.current.clear();
+      setLayers(importedLayers);
+      setSelectedId(importedLayers[0]?.id || null);
+      setDryRunState({ loading: false, result: null, open: false });
+
+      const importedVars = parsed?.metadata?.editorState?.vars;
+      if (importedVars && typeof importedVars === 'object') {
+        setVars(importedVars);
+      }
+
+      const importedPlaylistState = parsed?.metadata?.editorState?.playlistState;
+      if (importedPlaylistState && typeof importedPlaylistState === 'object') {
+        setPlaylistState({
+          playlistId: String(importedPlaylistState.playlistId || ''),
+          itemIndex: Number.isFinite(Number(importedPlaylistState.itemIndex)) ? Number(importedPlaylistState.itemIndex) : 0,
+          playing: Boolean(importedPlaylistState.playing),
+        });
+      }
+
+      if (parsed?.target?.sceneName) {
+        setObsConfig((prev) => ({ ...prev, sceneName: String(parsed.target.sceneName) }));
+      }
+
+      notifications.show({
+        title: 'Scene profile imported',
+        message: `${importedLayers.length} layer(s) loaded into the Scene Editor.`,
+        color: 'cyan',
+      });
+    } catch (error) {
+      notifications.show({
+        title: 'Import failed',
+        message: String(error?.message || error),
+        color: 'red',
+      });
+    }
+  };
+
   const setVar = (name, value) => {
     setVars((prev) => ({ ...prev, [name]: value }));
   };
@@ -874,6 +1635,19 @@ export default function SceneEditorPage() {
       window.localStorage.setItem('scene-editor-vars-v1', JSON.stringify(vars));
     } catch { /* ignore */ }
   }, [vars]);
+
+  useEffect(() => {
+    if (activeVideoItems.length > 0 && playlistState.itemIndex !== activePlaylistIndex) {
+      setPlaylistState((prev) => ({ ...prev, itemIndex: activePlaylistIndex }));
+    }
+  }, [activePlaylistIndex, activeVideoItems.length, playlistState.itemIndex]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(PLAYLIST_STORAGE_KEY, JSON.stringify(playlistState));
+    } catch { /* ignore */ }
+  }, [playlistState]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -970,6 +1744,19 @@ export default function SceneEditorPage() {
         }}
       >
         <Box style={{ flex: 1 }} />
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) {
+              importSceneProfile(file);
+            }
+            event.currentTarget.value = '';
+          }}
+        />
         <Tooltip label="Reset to defaults">
           <ActionIcon variant="subtle" color="cyan" onClick={() => {
             objectUrlRef.current.forEach((objectUrl) => {
@@ -981,9 +1768,20 @@ export default function SceneEditorPage() {
             setRightPanelWidth(260);
             setSelectedId(null);
             setVars({});
+            setPlaylistState({ playlistId: '', itemIndex: 0, playing: false });
             setDryRunState({ loading: false, result: null, open: false });
           }}>
             <IconRefresh size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip label="Import scene profile JSON">
+          <ActionIcon variant="subtle" color="cyan" onClick={() => importInputRef.current?.click()}>
+            <IconUpload size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip label="Export current scene profile JSON">
+          <ActionIcon variant="subtle" color="cyan" onClick={exportSceneProfile}>
+            <IconDownload size={16} />
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Simulate apply — shows what OBS would receive without connecting">
@@ -1028,11 +1826,22 @@ export default function SceneEditorPage() {
         >
           <Group justify="space-between" align="center" px="sm" py="xs" style={{ borderBottom: `1px solid ${PANEL_BORDER}`, flexShrink: 0 }}>
             <Text size="xs" fw={600} style={{ color: PANEL_ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Layers</Text>
-            <Tooltip label="Add layer (planned)">
-              <ActionIcon size="xs" variant="subtle" color="cyan" disabled>
-                <IconPlus size={12} />
-              </ActionIcon>
-            </Tooltip>
+            <Menu position="bottom-end" withinPortal>
+              <Menu.Target>
+                <Tooltip label="Add layer">
+                  <ActionIcon size="xs" variant="subtle" color="cyan">
+                    <IconPlus size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconLetterT size={14} />} onClick={() => addLayer('text')}>Text</Menu.Item>
+                <Menu.Item leftSection={<IconPhoto size={14} />} onClick={() => addLayer('image')}>Image</Menu.Item>
+                <Menu.Item leftSection={<IconVideo size={14} />} onClick={() => addLayer('video')}>Video</Menu.Item>
+                <Menu.Item leftSection={<IconBrowser size={14} />} onClick={() => addLayer('browser')}>Browser</Menu.Item>
+                <Menu.Item leftSection={<IconVolume size={14} />} onClick={() => addLayer('audio')}>Audio</Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
           </Group>
           <ScrollArea style={{ flex: 1 }} p="xs">
             <Stack gap={4}>
@@ -1052,6 +1861,122 @@ export default function SceneEditorPage() {
               ))}
             </Stack>
           </ScrollArea>
+          <Box style={{ borderTop: `1px solid ${PANEL_BORDER}`, padding: 10, flexShrink: 0 }}>
+            <OverlayGroupsPanel
+              groups={layerGroups}
+              onToggleGroup={setGroupVisible}
+              onSoloGroup={soloGroup}
+            />
+          </Box>
+          <Box style={{ borderTop: `1px solid ${PANEL_BORDER}`, padding: 10, flexShrink: 0 }}>
+            <Stack gap={8}>
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Text size="xs" fw={600} style={{ color: PANEL_ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  Playlist
+                </Text>
+                <Tooltip label="Reload saved playlists">
+                  <ActionIcon size="xs" variant="subtle" color="cyan" onClick={refreshPlaylists}>
+                    <IconRefresh size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <Select
+                size="xs"
+                placeholder="Choose saved playlist"
+                data={playlistOptions}
+                value={playlistState.playlistId || null}
+                onChange={(value) => selectPlaylist(value || '')}
+                searchable
+                clearable
+                styles={{
+                  input: {
+                    background: 'rgba(11,20,40,0.6)',
+                    border: `1px solid ${PANEL_BORDER}`,
+                    color: PANEL_ACCENT,
+                    fontSize: 11,
+                  },
+                }}
+              />
+              <Stack gap={2}>
+                <Text size="10px" c="dimmed" truncate>
+                  Current: {currentPlaylistItem?.title || currentPlaylistItem?.source || 'No video loaded'}
+                </Text>
+                <Text size="10px" c="dimmed" truncate>
+                  Next: {nextPlaylistItem?.title || nextPlaylistItem?.source || 'End of playlist'}
+                </Text>
+              </Stack>
+              {activeVideoItems.length > 0 && (
+                <Stack gap={3}>
+                  {activeVideoItems.slice(activePlaylistIndex, activePlaylistIndex + 4).map((item, offset) => {
+                    const absoluteIndex = activePlaylistIndex + offset;
+                    const isCurrent = offset === 0;
+                    return (
+                      <Group key={`${item.id}-${absoluteIndex}`} gap={6} wrap="nowrap">
+                        <Badge
+                          size="xs"
+                          color={isCurrent ? 'green' : offset === 1 ? 'violet' : 'gray'}
+                          variant={isCurrent ? 'light' : 'outline'}
+                          style={{ flexShrink: 0, width: 42 }}
+                        >
+                          {isCurrent ? 'now' : `+${offset}`}
+                        </Badge>
+                        <Text size="10px" c={isCurrent ? 'cyan' : 'dimmed'} truncate style={{ flex: 1 }}>
+                          {item.title || item.source}
+                        </Text>
+                        {!isCurrent && (
+                          <Button size="compact-xs" variant="subtle" color="cyan" onClick={() => loadPlaylistItem(absoluteIndex)}>
+                            Load
+                          </Button>
+                        )}
+                      </Group>
+                    );
+                  })}
+                </Stack>
+              )}
+              <Group gap={4} grow wrap="nowrap">
+                <Tooltip label="Previous playlist video">
+                  <ActionIcon
+                    variant="light"
+                    color="cyan"
+                    disabled={!currentPlaylistItem || activePlaylistIndex <= 0}
+                    onClick={() => loadPlaylistItem(activePlaylistIndex - 1)}
+                  >
+                    <IconPlayerSkipBack size={14} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={playlistState.playing ? 'Mark paused' : 'Mark playing'}>
+                  <ActionIcon
+                    variant="light"
+                    color={playlistState.playing ? 'orange' : 'green'}
+                    disabled={!currentPlaylistItem}
+                    onClick={togglePlaylistPlayback}
+                  >
+                    {playlistState.playing ? <IconPlayerPause size={14} /> : <IconPlayerPlay size={14} />}
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Next playlist video">
+                  <ActionIcon
+                    variant="light"
+                    color="cyan"
+                    disabled={!currentPlaylistItem || activePlaylistIndex >= activeVideoItems.length - 1}
+                    onClick={() => loadPlaylistItem(activePlaylistIndex + 1)}
+                  >
+                    <IconPlayerSkipForward size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              {currentPlaylistItem && (
+                <Button size="xs" variant="subtle" color="violet" onClick={() => loadPlaylistItem(activePlaylistIndex)}>
+                  Load current into video layer
+                </Button>
+              )}
+              <Text size="10px" c="dimmed">
+                {activeVideoItems.length > 0
+                  ? `${activePlaylistIndex + 1}/${activeVideoItems.length} videos bound to ${targetVideoLayerId}`
+                  : 'Saved video playlists from Sequence Builder appear here.'}
+              </Text>
+            </Stack>
+          </Box>
           <Box style={{ borderTop: `1px solid ${PANEL_BORDER}`, padding: '8px 10px', flexShrink: 0 }}>
             <Text size="10px" c="dimmed">{layers.length} layers · {layers.filter(l => l.visible).length} visible</Text>
           </Box>
@@ -1144,6 +2069,8 @@ export default function SceneEditorPage() {
               onUpdate={updateLayer}
               onPickSourceFile={pickSourceFile}
               onClearSourceFile={clearSourceFile}
+              onDuplicateLayer={duplicateLayer}
+              onDeleteLayer={deleteLayer}
               vars={vars}
               onSetVar={setVar}
             />
@@ -1299,6 +2226,8 @@ export default function SceneEditorPage() {
                     </Text>
                     <Text size="xs" c="dimmed" truncate style={{ flex: 1 }}>
                       {r.note}
+                      {r.playlistSlot ? ` · playlist:${r.playlistSlot}${r.playlistItemTitle ? ` (${r.playlistItemTitle})` : ''}${r.playbackState ? ` [${r.playbackState}]` : ''}` : ''}
+                      {r.playlistNextTitle ? ` · next:${r.playlistNextTitle}` : ''}
                       {r.resolvedPath ? ` → ${r.resolvedPath}` : ''}
                     </Text>
                     <Badge size="xs" color={r.visible ? 'green' : 'gray'} variant="dot" style={{ flexShrink: 0 }}>

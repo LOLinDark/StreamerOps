@@ -65,6 +65,63 @@ function toSceneEditorLayerType(type) {
   return EDITOR_LAYER_TYPES.includes(type) ? type : 'image';
 }
 
+export function buildEditorLayersFromSceneProfile(profileInput) {
+  const profile = normalizeSceneProfile(profileInput);
+
+  return profile.sources.map((source) => {
+    const type = toSceneEditorLayerType(source.type);
+    const transform = source.transform || {};
+    const layer = {
+      id: source.id,
+      label: source.label,
+      type,
+      visible: Boolean(source.enabled),
+      locked: Boolean(source.locked),
+      group: source.group,
+      x: toFiniteNumber(transform.x, 0),
+      y: toFiniteNumber(transform.y, 0),
+      width: Math.max(1, toFiniteNumber(transform.width, 100)),
+      height: Math.max(1, toFiniteNumber(transform.height, 100)),
+      opacity: Math.round(clampNumber(toFiniteNumber(transform.opacity, 1), 0, 1) * 100),
+      fallback: Boolean(source.metadata?.fallback),
+      source: getSourcePath(source),
+      obs: source.obs,
+    };
+
+    if (source.type === 'text') {
+      layer.source = source.template || '';
+      layer.bindings = source.bindings || {};
+      layer.style = source.style || {};
+    }
+
+    if (source.type === 'browser') {
+      layer.browser = source.browser && typeof source.browser === 'object' ? source.browser : {};
+    }
+
+    if (source.type === 'media' && source.asset?.kind === 'playlistSlot') {
+      layer.playlistBinding = {
+        slot: source.asset.slot || 'current',
+        playlistId: source.asset.playlistId || '',
+        playlistName: source.asset.playlistName || '',
+        itemId: source.asset.itemId || '',
+        itemIndex: Number.isFinite(Number(source.asset.itemIndex)) ? Number(source.asset.itemIndex) : 0,
+        itemTitle: source.asset.itemTitle || '',
+        source: source.asset.path || '',
+        playbackState: source.asset.playbackState || 'loaded',
+        nextItemId: source.asset.nextItemId || '',
+        nextItemTitle: source.asset.nextItemTitle || '',
+        nextItemSource: source.asset.nextItemSource || '',
+      };
+    }
+
+    if ((source.type === 'media' || source.type === 'audio') && source.audio) {
+      layer.audio = source.audio;
+    }
+
+    return layer;
+  });
+}
+
 function inferAsset(source, type) {
   const value = typeof source === 'string' ? source.slice(0, 1024) : '';
 
@@ -95,6 +152,43 @@ function inferAsset(source, type) {
   return null;
 }
 
+function inferPlaylistSlotAsset(layer) {
+  const binding = layer?.playlistBinding && typeof layer.playlistBinding === 'object'
+    ? layer.playlistBinding
+    : null;
+
+  if (!binding) {
+    return null;
+  }
+
+  return {
+    kind: 'playlistSlot',
+    slot: String(binding.slot || 'current'),
+    path: String(binding.source || layer?.source || ''),
+    playlistId: String(binding.playlistId || ''),
+    playlistName: String(binding.playlistName || ''),
+    itemId: String(binding.itemId || ''),
+    itemIndex: Number.isFinite(Number(binding.itemIndex)) ? Number(binding.itemIndex) : 0,
+    itemTitle: String(binding.itemTitle || ''),
+    playbackState: String(binding.playbackState || 'loaded'),
+    nextItemId: String(binding.nextItemId || ''),
+    nextItemTitle: String(binding.nextItemTitle || ''),
+    nextItemSource: String(binding.nextItemSource || ''),
+  };
+}
+
+function inferSourceGroup(layer, type) {
+  if (layer?.group) {
+    return String(layer.group);
+  }
+
+  if (type === 'image') return 'branding';
+  if (type === 'media') return 'playout';
+  if (type === 'text') return layer?.id === 'disclaimer' ? 'disclaimers' : 'titles';
+  if (type === 'audio') return 'audio';
+  return `${type}s`;
+}
+
 function buildSourceSettings(source) {
   if (source.type === 'text') {
     return {
@@ -107,6 +201,7 @@ function buildSourceSettings(source) {
   if (source.type === 'browser') {
     return {
       url: source.url || source.asset?.url || 'about:blank',
+      browser: source.browser && typeof source.browser === 'object' ? source.browser : {},
     };
   }
 
@@ -122,6 +217,10 @@ function getSourcePath(source) {
 
   if (source.type === 'text') {
     return source.template || '';
+  }
+
+  if (source.asset?.kind === 'playlistSlot') {
+    return source.asset?.path || source.asset?.source || '';
   }
 
   return source.asset?.path || '';
@@ -186,7 +285,7 @@ export function buildSceneProfileFromEditorLayers(layers, {
       label: String(layer?.label || id).slice(0, 120),
       enabled: Boolean(layer?.visible ?? true),
       locked: Boolean(layer?.locked),
-      group: String(layer?.group || (type === 'image' ? 'branding' : type === 'media' ? 'playout' : `${type}s`)),
+      group: inferSourceGroup(layer, type),
       zIndex: toFiniteNumber(layer?.zIndex, index * 10),
       transform,
       obs: {
@@ -212,12 +311,15 @@ export function buildSceneProfileFromEditorLayers(layers, {
       return {
         ...baseSource,
         url: inferAsset(layer?.source, type)?.url || 'about:blank',
+        browser: layer?.browser && typeof layer.browser === 'object' ? layer.browser : {},
       };
     }
 
+    const playlistAsset = type === 'media' ? inferPlaylistSlotAsset(layer) : null;
+
     return {
       ...baseSource,
-      asset: inferAsset(layer?.source, type),
+      asset: playlistAsset || inferAsset(layer?.source, type),
       audio: type === 'media' || type === 'audio'
         ? {
             profile: String(layer?.audio?.profile || 'live-program'),
@@ -349,6 +451,10 @@ export function validateSceneProfile(input) {
 
     if ((source.type === 'image' || source.type === 'media' || source.type === 'audio') && !source.asset?.path) {
       warnings.push(`Asset path not yet set for source ${source.id}.`);
+    }
+
+    if (source.type === 'media' && source.asset?.kind === 'playlistSlot' && !source.asset?.slot) {
+      errors.push(`Playlist-backed media source ${source.id} must declare an asset slot.`);
     }
 
     if (source.asset?.kind === 'previewOnly') {
@@ -589,14 +695,27 @@ export function compileSceneProfile(profileInput, {
       sourceId: source.id,
       sourceName: source.obs.sourceName,
       sourceKind: source.obs.sourceKind,
-      inputSettings: {
-        path: resolvedPath,
-        text: source.type === 'text' ? source.template : undefined,
-        url: source.type === 'browser' ? resolvedPath : undefined,
-      },
-    };
+        inputSettings: {
+          path: resolvedPath,
+          text: source.type === 'text' ? source.template : undefined,
+          url: source.type === 'browser' ? resolvedPath : undefined,
+          style: source.type === 'text' ? source.style : undefined,
+          browser: source.type === 'browser' ? source.browser : undefined,
+          playlistSlot: source.asset?.kind === 'playlistSlot' ? source.asset.slot : undefined,
+        },
+      };
 
     actions.push(ensureAction);
+
+    if (source.type === 'text' && source.style && Object.keys(source.style).length > 0) {
+      actions.push({
+        action: 'setTextStyle',
+        sceneName,
+        sourceId: source.id,
+        sourceName: source.obs.sourceName,
+        style: source.style,
+      });
+    }
 
     if (source.type !== 'audio') {
       actions.push({
@@ -625,6 +744,27 @@ export function compileSceneProfile(profileInput, {
       });
     }
 
+    if ((source.type === 'media' || source.type === 'audio') && source.audio) {
+      actions.push({
+        action: 'setInputAudioProfile',
+        sourceId: source.id,
+        sourceName: source.obs.sourceName,
+        profile: source.audio.profile || 'live-program',
+        muted: Boolean(source.audio.muted),
+        monitoring: source.audio.monitoring || 'monitorOff',
+      });
+    }
+
+    if (source.type === 'media' && source.asset?.kind === 'playlistSlot') {
+      actions.push({
+        action: 'setMediaPlaybackState',
+        sourceId: source.id,
+        sourceName: source.obs.sourceName,
+        state: source.asset.playbackState || 'loaded',
+        slot: source.asset.slot || 'current',
+      });
+    }
+
     return {
       layerId: source.id,
       label: source.label,
@@ -636,8 +776,16 @@ export function compileSceneProfile(profileInput, {
       visible: source.enabled,
       opacity: Math.round(source.transform.opacity * 100),
       transform,
+      playlistSlot: source.asset?.kind === 'playlistSlot' ? source.asset.slot : null,
+      playlistItemTitle: source.asset?.kind === 'playlistSlot' ? source.asset.itemTitle : null,
+      playlistNextTitle: source.asset?.kind === 'playlistSlot' ? source.asset.nextItemTitle : null,
+      playbackState: source.asset?.kind === 'playlistSlot' ? source.asset.playbackState : null,
+      textStyle: source.type === 'text' ? source.style || null : null,
+      audio: source.audio || null,
       status: 'dry-run',
-      note: `${source.type} source at x=${transform.x} y=${transform.y} ${transform.width}x${transform.height}`,
+      note: source.type === 'text' && source.style?.fontSize
+        ? `${source.type} source at x=${transform.x} y=${transform.y} ${transform.width}x${transform.height}, ${source.style.fontSize}px`
+        : `${source.type} source at x=${transform.x} y=${transform.y} ${transform.width}x${transform.height}`,
     };
   });
 

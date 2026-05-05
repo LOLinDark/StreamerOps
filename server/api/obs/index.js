@@ -672,6 +672,100 @@ export function registerObsRoutes(app) {
       return rawPath;
     };
 
+    const normalizeAudioProfile = (source) => {
+      const audio = source.audio && typeof source.audio === 'object' ? source.audio : {};
+      const profile = String(audio.profile || 'live-program');
+      const profileMuted = profile === 'preview-muted' || profile === 'intermission-muted';
+
+      return {
+        profile,
+        muted: Boolean(audio.muted || profileMuted),
+        monitoring: String(audio.monitoring || 'monitorOff'),
+      };
+    };
+
+    const parseCssColor = (value) => {
+      const text = String(value || '').trim();
+      if (!text || text === 'transparent') {
+        return null;
+      }
+
+      const hex = text.match(/^#?([0-9a-f]{6})([0-9a-f]{2})?$/i);
+      if (hex) {
+        const raw = hex[1];
+        const alpha = hex[2] ? Number.parseInt(hex[2], 16) : 255;
+        return {
+          r: Number.parseInt(raw.slice(0, 2), 16),
+          g: Number.parseInt(raw.slice(2, 4), 16),
+          b: Number.parseInt(raw.slice(4, 6), 16),
+          a: alpha,
+        };
+      }
+
+      const rgba = text.match(/^rgba?\(([^)]+)\)$/i);
+      if (rgba) {
+        const parts = rgba[1].split(',').map((part) => part.trim());
+        const alpha = parts[3] === undefined ? 1 : Math.max(0, Math.min(1, Number(parts[3])));
+        return {
+          r: Math.max(0, Math.min(255, Number.parseInt(parts[0], 10) || 0)),
+          g: Math.max(0, Math.min(255, Number.parseInt(parts[1], 10) || 0)),
+          b: Math.max(0, Math.min(255, Number.parseInt(parts[2], 10) || 0)),
+          a: Math.round(alpha * 255),
+        };
+      }
+
+      return null;
+    };
+
+    const toObsColorInt = (value) => {
+      const color = parseCssColor(value);
+      if (!color) {
+        return null;
+      }
+
+      return ((color.a << 24) | (color.b << 16) | (color.g << 8) | color.r) >>> 0;
+    };
+
+    const toFontStyleName = (weight) => {
+      const numeric = Number(weight);
+      if (numeric >= 800) return 'Extra Bold';
+      if (numeric >= 700) return 'Bold';
+      if (numeric >= 600) return 'Semi Bold';
+      return 'Regular';
+    };
+
+    const buildObsTextSettings = (text, style = {}) => {
+      const fontSize = Number.isFinite(Number(style.fontSize)) ? Math.max(8, Number(style.fontSize)) : 42;
+      const color = toObsColorInt(style.color || '#f4fbff');
+      const background = parseCssColor(style.backgroundColor);
+      const backgroundColor = toObsColorInt(style.backgroundColor);
+      const settings = {
+        text,
+        font: {
+          face: String(style.fontFamily || 'Inter'),
+          size: fontSize,
+          style: toFontStyleName(style.fontWeight),
+        },
+      };
+
+      if (color !== null) {
+        settings.color = color;
+      }
+
+      if (backgroundColor !== null) {
+        settings.bk_color = backgroundColor;
+        settings.bk_opacity = background?.a ?? 255;
+      } else {
+        settings.bk_opacity = 0;
+      }
+
+      if (['left', 'center', 'right'].includes(String(style.textAlign))) {
+        settings.align = String(style.textAlign);
+      }
+
+      return settings;
+    };
+
     const sourceToApplyLayer = (source) => {
       const transform = source.transform || {};
       return {
@@ -687,6 +781,13 @@ export function registerObsRoutes(app) {
         height: Number.isFinite(Number(transform.height)) ? Math.max(1, Number(transform.height)) : 100,
         opacity: Number.isFinite(Number(transform.opacity)) ? Math.min(100, Math.max(0, Number(transform.opacity) * 100)) : 100,
         source: resolveSceneSourcePath(source),
+        audio: source.type === 'media' || source.type === 'audio' ? normalizeAudioProfile(source) : null,
+        browser: source.type === 'browser' && source.browser && typeof source.browser === 'object' ? source.browser : null,
+        style: source.type === 'text' && source.style && typeof source.style === 'object' ? source.style : null,
+        playlistSlot: source.asset?.kind === 'playlistSlot' ? source.asset.slot : null,
+        playlistItemTitle: source.asset?.kind === 'playlistSlot' ? source.asset.itemTitle : null,
+        playlistNextTitle: source.asset?.kind === 'playlistSlot' ? source.asset.nextItemTitle : null,
+        playbackState: source.asset?.kind === 'playlistSlot' ? source.asset.playbackState : null,
       };
     };
 
@@ -868,7 +969,9 @@ export function registerObsRoutes(app) {
                 inputSettings: { local_file: filePath, looping: true, hw_decode: false },
                 visible: layer.visible,
               });
-              result.note = filePath ? `Video source set to ${filePath}` : 'Video source ensured (no local path - set file in OBS)';
+              result.note = filePath
+                ? `Video source set to ${filePath}${layer.playlistItemTitle ? ` (${layer.playlistItemTitle})` : ''}`
+                : 'Video source ensured (no local path - set file in OBS)';
 
             } else if (layer.type === 'image') {
               const filePath = layer.source.startsWith('/') || /^[A-Za-z]:[\\/]/.test(layer.source)
@@ -884,24 +987,42 @@ export function registerObsRoutes(app) {
               result.note = `Image source set to ${filePath}`;
 
             } else if (layer.type === 'text') {
+              const textSettings = buildObsTextSettings(layer.source, layer.style || {});
               ensureResult = await ensureInput({
                 sourceName,
                 inputKind: TEXT_KINDS[0],
-                inputSettings: { text: layer.source },
+                inputSettings: textSettings,
                 visible: layer.visible,
                 createKinds: TEXT_KINDS,
               });
               result.note = `Text source set with kind ${ensureResult.inputKind}`;
+              result.textStyle = {
+                fontFamily: textSettings.font?.face || null,
+                fontSize: textSettings.font?.size || null,
+                fontStyle: textSettings.font?.style || null,
+                colorApplied: textSettings.color !== undefined,
+                backgroundApplied: textSettings.bk_opacity > 0,
+                align: textSettings.align || null,
+              };
 
             } else if (layer.type === 'browser') {
               const url = /^https?:\/\//.test(layer.source) ? layer.source : 'about:blank';
+              const browserWidth = Number.isFinite(Number(layer.browser?.width)) ? Math.max(1, Number(layer.browser.width)) : layer.width;
+              const browserHeight = Number.isFinite(Number(layer.browser?.height)) ? Math.max(1, Number(layer.browser.height)) : layer.height;
               ensureResult = await ensureInput({
                 sourceName,
                 inputKind: 'browser_source',
-                inputSettings: { url, width: layer.width, height: layer.height, fps: 30, shutdown: false },
+                inputSettings: {
+                  url,
+                  width: browserWidth,
+                  height: browserHeight,
+                  fps: 30,
+                  shutdown: false,
+                  restart_when_active: Boolean(layer.browser?.restartWhenActive),
+                },
                 visible: layer.visible,
               });
-              result.note = `Browser source set to ${url}`;
+              result.note = `Browser source set to ${url} (${browserWidth}x${browserHeight})`;
 
             } else if (layer.type === 'audio') {
               // Audio has no canvas position; just create a media source stub
@@ -923,6 +1044,36 @@ export function registerObsRoutes(app) {
             result.operation = ensureResult?.created ? 'created' : 'updated';
             result.inputKind = ensureResult?.inputKind || null;
             result.sceneItemCreated = Boolean(ensureResult?.sceneItemCreated);
+            result.playlistSlot = layer.playlistSlot || null;
+            result.playbackState = layer.playbackState || null;
+
+            if ((layer.type === 'video' || layer.type === 'audio') && layer.audio) {
+              try {
+                await obs.call('SetInputMute', {
+                  inputName: sourceName,
+                  inputMuted: Boolean(layer.audio.muted),
+                });
+                result.audio = {
+                  profile: layer.audio.profile,
+                  muted: Boolean(layer.audio.muted),
+                  monitoring: layer.audio.monitoring,
+                };
+              } catch (audioError) {
+                result.audioWarning = `Audio profile not fully applied: ${String(audioError?.message || audioError)}`;
+              }
+            }
+
+            if (layer.type === 'video' && layer.playlistSlot && layer.playbackState === 'playing') {
+              try {
+                await obs.call('TriggerMediaInputAction', {
+                  inputName: sourceName,
+                  mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
+                });
+                result.mediaAction = 'restart';
+              } catch (mediaError) {
+                result.mediaWarning = `Media restart not applied: ${String(mediaError?.message || mediaError)}`;
+              }
+            }
 
             // Apply position and size transform
             const item = ensureResult?.item || await getSceneItem(sourceName);
