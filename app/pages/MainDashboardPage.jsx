@@ -256,7 +256,7 @@ const getToolsArray = () => [
     id: 'new-player-guide',
     title: 'Streamer Academy',
     desc: 'Build setup guides, operating notes, and onboarding material for repeatable stream workflows',
-    image: getAssetUrl('tools/new-player-guide.jpg'),
+    image: null,
     alt: 'Streamer Academy - Stream setup guidance and onboarding documentation',
     color: '#00d9ff',
     path: '/new-player-guide',
@@ -364,6 +364,7 @@ const ToolCard = ({ tool }) => {
           <div
             style={{
               position: 'relative',
+              height: '200px',
               overflow: 'hidden',
               borderBottom: `1px solid var(--oc-cyan-dim)`,
             }}
@@ -375,7 +376,7 @@ const ToolCard = ({ tool }) => {
                   alt={tool.alt}
                   onLoad={() => setImageLoaded(true)}
                   fallback={<PlaceholderImage tool={tool} />}
-                  style={{ display: imageLoaded ? 'block' : 'none' }}
+                  style={{ display: imageLoaded ? 'block' : 'none', height: '200px', objectFit: 'cover', width: '100%' }}
                 />
                 {!imageLoaded && <PlaceholderImage tool={tool} />}
               </>
@@ -418,7 +419,7 @@ export default function MainDashboardPage() {
   const { setPageTitle } = usePageTitle();
   const devMode = useAppStore((s) => s.devMode);
   useEffect(() => {
-    setPageTitle(<><DevTag tag="APP01" />Verse Operations Hub</>);
+    setPageTitle(<><DevTag tag="APP01" />Dashboard</>);
     return () => setPageTitle(null);
   }, [setPageTitle]);
   console.log('[OmniCore] MainDashboardPage rendered');

@@ -6,6 +6,7 @@ import SciFiFrame from '../components/ui/SciFiFrame';
 import ChecklistSection from '../components/ChecklistSection';
 import { onboardingChecklist, getTotalTaskCount } from '../data/onboardingChecklist';
 import { useOnboardingStore } from '../stores/useOnboardingStore';
+import { useAppStore } from '../stores';
 import DevTag from '../components/DevTag';
 import { usePageTitle } from '../contexts/PageTitleContext';
 
@@ -16,6 +17,7 @@ export default function OnboardingChecklistPage() {
     return () => setPageTitle(null);
   }, [setPageTitle]);
   const navigate = useNavigate();
+  const devMode = useAppStore((s) => s.devMode);
   const { completedTasks, toggleTask, visitSection, getProgress, completeOnboarding, onboardingCompleted } =
     useOnboardingStore();
 
@@ -24,19 +26,23 @@ export default function OnboardingChecklistPage() {
     onboardingChecklist.forEach(section => visitSection(section.id));
   }, [visitSection]);
 
-  const totalTasks = getTotalTaskCount();
+  const totalTasks = getTotalTaskCount({ includeDevelopment: devMode });
   const progress = getProgress(totalTasks);
 
   // Merge store state with static data
   const sectionsWithState = useMemo(() => {
-    return onboardingChecklist.map(section => ({
-      ...section,
-      tasks: section.tasks.map(task => ({
-        ...task,
-        completed: completedTasks[task.id] || false,
-      })),
-    }));
-  }, [completedTasks]);
+    return onboardingChecklist
+      .map(section => ({
+        ...section,
+        tasks: section.tasks
+          .filter((task) => devMode || !task.inDevelopment)
+          .map(task => ({
+            ...task,
+            completed: completedTasks[task.id] || false,
+          })),
+      }))
+      .filter((section) => section.tasks.length > 0);
+  }, [completedTasks, devMode]);
 
   const handleTaskToggle = (taskId, completed) => {
     toggleTask(taskId, completed);
@@ -179,7 +185,7 @@ export default function OnboardingChecklistPage() {
               💡 Tip: Share your progress with friends or your org to compare notes and help each other along the way.
             </Text>
             <Text size="xs" c="dimmed" mt="xs">
-              🎁 Complete the full checklist and earn special recognition in future phases. More features coming soon!
+              🎁 Complete the full checklist and earn special recognition in future phases.
             </Text>
           </div>
         </Stack>

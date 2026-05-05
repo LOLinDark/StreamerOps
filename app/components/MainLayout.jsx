@@ -29,7 +29,7 @@ export default function MainLayout() {
   return (
     <PageTitleProvider value={{ setPageTitle }}>
     <div style={{ minHeight: '100vh', background: 'var(--oc-space-deep)', position: 'relative' }}>
-      {!isFullWidth && <AppHeader pageTitle={pageTitle || autoPageTitle} />}
+      <AppHeader pageTitle={pageTitle || autoPageTitle} />
       {!isFullWidth && <AerobookBar />}
 
       {/* Permanent gradient overlay — positioned below header + bookmark bar, scrolls with content */}
@@ -52,7 +52,7 @@ export default function MainLayout() {
 
       {/* Main Content */}
       {isFullWidth ? (
-        <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100vh' }}>
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', height: 'calc(100vh - 60px)' }}>
           <Outlet />
         </div>
       ) : (

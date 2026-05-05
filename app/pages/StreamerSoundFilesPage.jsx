@@ -294,7 +294,7 @@ export default function StreamerSoundFilesPage() {
                   Default Star Citizen soundtrack files are included and cannot be deleted.
                 </Text>
                 <Text size="xs" c="dimmed">
-                  Not currently integrated into playout. Coming soon: per-scene audio, background music triggers,
+                  Not currently integrated into playout. Planned next: per-scene audio, background music triggers,
                   and alert sound effects.
                 </Text>
               </Stack>

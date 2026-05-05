@@ -14,9 +14,9 @@ export default function ScreenshotsPage() {
   const screenshots = [
     {
       src: `${import.meta.env.BASE_URL}screenshots/verse-operations-hub.png`,
-      title: 'Verse Operations Hub',
+      title: 'Dashboard',
       description: 'Main dashboard with operational overview',
-      alt: 'Verse Operations Hub',
+      alt: 'Dashboard',
     },
     {
       src: `${import.meta.env.BASE_URL}screenshots/ship-database.png`,
@@ -81,7 +81,7 @@ export default function ScreenshotsPage() {
           <ScreenshotsGallery screenshots={screenshots} />
         ) : (
           <Box p="lg" ta="center" c="dimmed">
-            <Text>Screenshots coming soon! Add images to public/screenshots/</Text>
+            <Text>Screenshots gallery not populated yet. Add images to public/screenshots/</Text>
           </Box>
         )}
       </Stack>

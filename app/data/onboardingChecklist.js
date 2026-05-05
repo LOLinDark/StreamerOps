@@ -27,9 +27,10 @@ export const onboardingChecklist = [
         title: 'Learn About HOTAS Configuration',
         badge: 'Recommended',
         badgeColor: 'orange',
+        inDevelopment: true,
         description: 'Star Citizen supports advanced flight controls including HOTAS (Hands-On Throttle-And-Stick) systems. We have a dedicated HOTAS configuration tool available in OmniCore to help you set up your controls perfectly. Check it out when you\'re ready to customize your keybindings.',
         cta: {
-          label: 'View HOTAS Tool (Coming Soon)',
+          label: 'Open Technology Config (Dev)',
           action: () => console.log('HOTAS tool not yet available'),
         },
         completed: false,
@@ -226,8 +227,12 @@ export const getAllTasks = () => {
 };
 
 // Helper function to get total task count
-export const getTotalTaskCount = () => {
-  return getAllTasks().length;
+export const getTotalTaskCount = ({ includeDevelopment = true } = {}) => {
+  const tasks = getAllTasks();
+  if (includeDevelopment) {
+    return tasks.length;
+  }
+  return tasks.filter((task) => !task.inDevelopment).length;
 };
 
 // Helper function to filter by category

@@ -1,5 +1,6 @@
 import { Stack, Card, Group, Badge, Text, Checkbox, Button, SimpleGrid, ThemeIcon } from '@mantine/core';
 import { useState } from 'react';
+import IncompleteFeatureBadge from './IncompleteFeatureBadge';
 
 export default function ChecklistSection({ 
   icon = '✓', 
@@ -136,11 +137,14 @@ export default function ChecklistSection({
                   >
                     {task.title}
                   </Text>
-                  {task.badge && (
-                    <Badge size="xs" color={task.badgeColor || 'gray'} variant="light">
-                      {task.badge}
-                    </Badge>
-                  )}
+                  <Group gap="xs">
+                    {task.badge && (
+                      <Badge size="xs" color={task.badgeColor || 'gray'} variant="light">
+                        {task.badge}
+                      </Badge>
+                    )}
+                    {task.inDevelopment && <IncompleteFeatureBadge />}
+                  </Group>
                 </Stack>
               </Group>
               {expandedTasks[task.id] ? '▼' : '▶'}

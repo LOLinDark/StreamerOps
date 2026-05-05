@@ -69,10 +69,10 @@ export default function DeveloperHotasProfileMatrixLabPage() {
           </Text>
           <Group>
             <Button variant="light" color="cyan" disabled>
-              Generate Variant XML (coming soon)
+              Generate Variant XML (planned)
             </Button>
             <Button variant="light" color="orange" disabled>
-              Apply Variant to Live Mapping (coming soon)
+              Apply Variant to Live Mapping (planned)
             </Button>
           </Group>
         </Stack>

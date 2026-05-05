@@ -92,10 +92,21 @@ function App() {
   const location = useLocation();
   const welcomeCompleted = useAppStore((s) => s.welcomeCompleted);
   const completeWelcome = useAppStore((s) => s.completeWelcome);
+  const setDevMode = useAppStore((s) => s.setDevMode);
   const isStreamPlayoutWindow = [
     '/overlays/window/star-citizen-playout',
     '/overlays/window/star-citizen-source-capture',
   ].includes(location.pathname);
+
+  useEffect(() => {
+    const unlockKey = (import.meta.env.VITE_DEV_MODE_UNLOCK_KEY || '').trim();
+    if (!unlockKey) return;
+
+    const params = new URLSearchParams(location.search || '');
+    if (params.get('opsdev') === unlockKey) {
+      setDevMode(true);
+    }
+  }, [location.search, setDevMode]);
 
   console.log('[OmniCore] App.jsx rendering, welcomeCompleted:', welcomeCompleted);
 

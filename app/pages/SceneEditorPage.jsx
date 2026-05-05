@@ -930,47 +930,7 @@ export default function SceneEditorPage() {
           boxShadow: `0 4px 16px rgba(76,201,240,0.08), inset 0 1px 0 ${PANEL_BORDER}`,
         }}
       >
-        <Text size="sm" fw={700} style={{ letterSpacing: '0.05em', color: PANEL_ACCENT, flexShrink: 0 }}>🎬 SCENE EDITOR</Text>
-        <Badge variant="light" color="cyan" size="sm" style={{ flexShrink: 0 }}>LIVE EDIT</Badge>
         <Box style={{ flex: 1 }} />
-        <Tooltip label="OBS scene name — must exist or will be created">
-          <TextInput
-            size="xs"
-            placeholder="OBS scene name"
-            value={obsConfig.sceneName}
-            onChange={(e) => setObsConfig((prev) => ({ ...prev, sceneName: e.currentTarget.value }))}
-            style={{ width: 200 }}
-            styles={{
-              input: {
-                background: 'rgba(11,20,40,0.6)',
-                border: `1px solid ${PANEL_BORDER}`,
-                color: PANEL_ACCENT,
-                fontSize: 12,
-              },
-            }}
-          />
-        </Tooltip>
-        <Tooltip label={`OBS WebSocket host:port — currently ${obsConfig.host}:${obsConfig.port}`}>
-          <TextInput
-            size="xs"
-            placeholder="host:port"
-            value={`${obsConfig.host}:${obsConfig.port}`}
-            onChange={(e) => {
-              const [h, p] = e.currentTarget.value.split(':');
-              setObsConfig((prev) => ({ ...prev, host: h || '127.0.0.1', port: Number(p) || 4455 }));
-            }}
-            style={{ width: 120 }}
-            styles={{
-              input: {
-                background: 'rgba(11,20,40,0.6)',
-                border: `1px solid ${PANEL_BORDER}`,
-                color: PANEL_ACCENT,
-                fontSize: 12,
-              },
-            }}
-          />
-        </Tooltip>
-        <Box style={{ width: 8 }} />
         <Tooltip label="Reset to defaults">
           <ActionIcon variant="subtle" color="cyan" onClick={() => {
             objectUrlRef.current.forEach((objectUrl) => {
@@ -1029,7 +989,7 @@ export default function SceneEditorPage() {
         >
           <Group justify="space-between" align="center" px="sm" py="xs" style={{ borderBottom: `1px solid ${PANEL_BORDER}`, flexShrink: 0 }}>
             <Text size="xs" fw={600} style={{ color: PANEL_ACCENT, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Layers</Text>
-            <Tooltip label="Add layer (coming soon)">
+            <Tooltip label="Add layer (planned)">
               <ActionIcon size="xs" variant="subtle" color="cyan" disabled>
                 <IconPlus size={12} />
               </ActionIcon>
@@ -1155,37 +1115,77 @@ export default function SceneEditorPage() {
       {/* ── Status bar ──────────────────────────────────────────────────────── */}
       <Box
         style={{
-          height: 32,
+          height: 40,
           borderTop: `1px solid ${PANEL_BORDER}`,
           background: PANEL_BG,
           backdropFilter: 'blur(8px)',
           display: 'flex',
           alignItems: 'center',
           padding: '0 16px',
-          gap: 16,
+          gap: 12,
           flexShrink: 0,
           boxShadow: `inset 0 1px 0 ${PANEL_BORDER}`,
         }}
       >
-        <Text size="10px" c="dimmed" style={{ color: `${PANEL_ACCENT}80` }}>
+        <Text size="10px" c="dimmed" style={{ color: `${PANEL_ACCENT}80`, flexShrink: 0 }}>
           {selectedLayer
             ? `${selectedLayer.label} · ${selectedLayer.width}×${selectedLayer.height} @ (${selectedLayer.x}, ${selectedLayer.y})`
             : 'Click a layer to select — Ready to compose'}
         </Text>
+        <Box style={{ flex: 1 }} />
+        <Text size="10px" style={{ color: `${PANEL_ACCENT}60`, flexShrink: 0 }}>OBS</Text>
+        <Tooltip label="OBS scene name — must exist or will be created">
+          <TextInput
+            size="xs"
+            placeholder="OBS scene name"
+            value={obsConfig.sceneName}
+            onChange={(e) => setObsConfig((prev) => ({ ...prev, sceneName: e.currentTarget.value }))}
+            style={{ width: 180 }}
+            styles={{
+              input: {
+                background: 'rgba(11,20,40,0.6)',
+                border: `1px solid ${PANEL_BORDER}`,
+                color: PANEL_ACCENT,
+                fontSize: 11,
+                height: 26,
+                minHeight: 26,
+              },
+            }}
+          />
+        </Tooltip>
+        <Tooltip label={`OBS WebSocket host:port — currently ${obsConfig.host}:${obsConfig.port}`}>
+          <TextInput
+            size="xs"
+            placeholder="host:port"
+            value={`${obsConfig.host}:${obsConfig.port}`}
+            onChange={(e) => {
+              const [h, p] = e.currentTarget.value.split(':');
+              setObsConfig((prev) => ({ ...prev, host: h || '127.0.0.1', port: Number(p) || 4455 }));
+            }}
+            style={{ width: 110 }}
+            styles={{
+              input: {
+                background: 'rgba(11,20,40,0.6)',
+                border: `1px solid ${PANEL_BORDER}`,
+                color: PANEL_ACCENT,
+                fontSize: 11,
+                height: 26,
+                minHeight: 26,
+              },
+            }}
+          />
+        </Tooltip>
         {dryRunState.result && (
-          <>
-            <Box style={{ flex: 1 }} />
-            <Tooltip label={dryRunState.open ? 'Hide dry run results' : 'Show dry run results'}>
-              <Button
-                size="xs"
-                variant="subtle"
-                color={dryRunState.result.success ? 'cyan' : 'red'}
-                onClick={() => setDryRunState((prev) => ({ ...prev, open: !prev.open }))}
-              >
-                {dryRunState.open ? 'Hide' : 'Show'} dry run — {dryRunState.result.results?.length ?? 0} layers
-              </Button>
-            </Tooltip>
-          </>
+          <Tooltip label={dryRunState.open ? 'Hide dry run results' : 'Show dry run results'}>
+            <Button
+              size="xs"
+              variant="subtle"
+              color={dryRunState.result.success ? 'cyan' : 'red'}
+              onClick={() => setDryRunState((prev) => ({ ...prev, open: !prev.open }))}
+            >
+              {dryRunState.open ? 'Hide' : 'Show'} dry run — {dryRunState.result.results?.length ?? 0} layers
+            </Button>
+          </Tooltip>
         )}
       </Box>
 

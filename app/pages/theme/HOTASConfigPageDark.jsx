@@ -358,7 +358,7 @@ export default function HOTASConfigPageDark() {
                 • <strong>Modifiers</strong>: SHIFT, CTRL, ALT can be combined with any key.
               </Text>
               <Text size="xs" style={{ color: colors.text }}>
-                • <strong>Binding Editor</strong> (Coming Soon): Click any row to edit. HOTAS device detection
+                • <strong>Binding Editor</strong> (Planned): Click any row to edit. HOTAS device detection
                 coming Phase 2.
               </Text>
             </Stack>
