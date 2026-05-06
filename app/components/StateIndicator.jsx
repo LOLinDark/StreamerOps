@@ -1,4 +1,5 @@
 import { Badge, Tooltip } from '@mantine/core';
+import PropTypes from 'prop-types';
 
 export const StateIndicator = ({ changed, pendingApply }) => {
   if (pendingApply) {
@@ -26,4 +27,14 @@ export const StateIndicator = ({ changed, pendingApply }) => {
       </Badge>
     </Tooltip>
   );
+};
+
+StateIndicator.propTypes = {
+  changed: PropTypes.bool,
+  pendingApply: PropTypes.bool,
+};
+
+StateIndicator.defaultProps = {
+  changed: false,
+  pendingApply: false,
 };

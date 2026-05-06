@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import { useAppStore } from '../stores';
 
 /**
@@ -13,3 +14,7 @@ export default function DevTag({ tag }) {
   if (!devMode) return null;
   return <span style={{ color: '#ff9800' }}>[{tag}] </span>;
 }
+
+DevTag.propTypes = {
+  tag: PropTypes.string.isRequired,
+};

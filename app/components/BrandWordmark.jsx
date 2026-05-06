@@ -1,4 +1,5 @@
 import { Text } from '@mantine/core';
+import PropTypes from 'prop-types';
 
 export default function BrandWordmark({ onClick, size = '1.5rem', color = '#00d9ff' }) {
   return (
@@ -18,3 +19,14 @@ export default function BrandWordmark({ onClick, size = '1.5rem', color = '#00d9
     </Text>
   );
 }
+
+BrandWordmark.propTypes = {
+  onClick: PropTypes.func,
+  size: PropTypes.string,
+  color: PropTypes.string,
+};
+
+BrandWordmark.defaultProps = {
+  size: '1.5rem',
+  color: '#00d9ff',
+};
