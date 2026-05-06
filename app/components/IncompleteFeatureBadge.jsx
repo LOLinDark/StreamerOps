@@ -1,5 +1,6 @@
 import { Badge } from '@mantine/core';
 import { IconTool } from '@tabler/icons-react';
+import PropTypes from 'prop-types';
 
 export default function IncompleteFeatureBadge({ label = 'In Development' }) {
   return (
@@ -13,3 +14,11 @@ export default function IncompleteFeatureBadge({ label = 'In Development' }) {
     </Badge>
   );
 }
+
+IncompleteFeatureBadge.propTypes = {
+  label: PropTypes.string,
+};
+
+IncompleteFeatureBadge.defaultProps = {
+  label: 'In Development',
+};
