@@ -43,7 +43,7 @@ const devTags = {
   GT01:      { label: 'Streamer Academy',        path: '/new-player-guide',      file: 'pages/NewPlayerGuidePage.jsx' },
   GT02:      { label: 'Loadout Builder',         path: '/loadout-builder',       file: 'pages/LoadoutBuilderPage.jsx' },
   GT03:      { label: 'Platform Tracker',        path: '/economy-tracker',       file: 'pages/EconomyTrackerPage.jsx' },
-  GT04:      { label: 'Status View',             path: '/location-guide',        file: 'pages/StatusViewPage.jsx' },
+  GT04:      { label: 'Stream Status',           path: '/stream-status',         file: 'pages/StatusViewPage.jsx' },
   GT05:      { label: 'Ship Tools',              path: '/ship-database',         file: 'pages/ShipDatabasePage.jsx' },
 
   // ── Admin Chat ─────────────────────────────────

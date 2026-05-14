@@ -29,8 +29,10 @@ import { registerImageRoutes } from './api/images/index.js';
 import { registerShipRoutes } from './api/ships/index.js';
 import { registerVersemailRoutes } from './api/versemail/index.js';
 import { registerObsRoutes } from './api/obs/index.js';
+import { registerAudioDiagnosticRoutes } from './api/audio/index.js';
 import { registerHotasModeRoutes } from './peripherals/hotas/index.js';
 import { registerDownloadRoutes } from './api/dev/download/index.js';
+import importExportRouter from './api/import-export.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,6 +49,8 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:4242',
   'http://localhost:4342',
   'http://127.0.0.1:4342',
+  'http://localhost',
+  'http://127.0.0.1',
 ];
 const ANALYTICS_EVENT_NAME_PATTERN = /^[a-z0-9][a-z0-9._:-]{2,63}$/;
 const SENSITIVE_KEY_PATTERN = /(email|password|token|secret|phone|address|auth|apikey|api-key|key)/i;
@@ -1164,8 +1168,10 @@ registerImageRoutes(app);
 registerShipRoutes(app);
 registerVersemailRoutes(app);
 registerObsRoutes(app);
+registerAudioDiagnosticRoutes(app);
 registerHotasModeRoutes(app);
 registerDownloadRoutes(app);
+app.use('/api/import-export', importExportRouter);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

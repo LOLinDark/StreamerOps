@@ -13,6 +13,7 @@ import NewPlayerGuidePage from './pages/NewPlayerGuidePage';
 import LoadoutBuilderPage from './pages/LoadoutBuilderPage';
 import EconomyTrackerPage from './pages/EconomyTrackerPage';
 import StatusViewPage from './pages/StatusViewPage';
+import StreamStatusPage from './pages/StreamStatusPage';
 import HOTASConfigMainPage from './pages/HOTASConfigMainPage';
 import HOTASConfigModesLabPage from './pages/HOTASConfigModesLabPage';
 import DeveloperHotasProfileMatrixLabPage from './pages/DeveloperHotasProfileMatrixLabPage';
@@ -47,6 +48,7 @@ const StreamerBackgroundRemovalPage = lazy(() => import('./pages/StreamerBackgro
 const StreamerSoundFilesPage = lazy(() => import('./pages/StreamerSoundFilesPage'));
 const StreamerWizard1BPage = lazy(() => import('./pages/StreamerWizard1BPage'));
 const SceneEditorPage = lazy(() => import('./pages/SceneEditorPage'));
+const ToolsPage = lazy(() => import('./pages/ToolsPage'));
 const OverlaysStudioPage = lazy(() => import('./pages/OverlaysStudioPage'));
 const OverlayBrowserPlayoutPage = lazy(() => import('./pages/OverlayBrowserPlayoutPage'));
 const OverlaysStarCitizenQuickPlayoutPage = lazy(() => import('./pages/OverlaysStarCitizenQuickPlayoutPage'));
@@ -140,16 +142,19 @@ function App() {
           <Route path="new-player-guide" element={<NewPlayerGuidePage />} />
           <Route path="loadout-builder" element={<LoadoutBuilderPage />} />
           <Route path="economy-tracker" element={<EconomyTrackerPage />} />
+          <Route path="stream-status" element={<StreamStatusPage />} />
           <Route path="location-guide" element={<StatusViewPage />} />
           <Route path="hotas-config" element={<HOTASConfigMainPage />} />
           <Route path="hotas-config-modes-lab" element={<HOTASConfigModesLabPage />} />
           <Route path="ship-database" element={<ShipDatabasePage />} />
           <Route path="scene-editor" element={<Lazy Component={SceneEditorPage} />} />
+          <Route path="tools" element={<Lazy Component={ToolsPage} />} />
           <Route path="settings" element={<Lazy Component={SettingsPage} />} />
           <Route path="settings/hotas" element={<Lazy Component={HOTASTestPage} />} />
           <Route path="settings/theme" element={<Lazy Component={ThemePage} />} />
           <Route path="about" element={<Lazy Component={AboutPage} />} />
           <Route path="screenshots" element={<Lazy Component={ScreenshotsPage} />} />
+          <Route path="tools/import-export-obs" element={<Navigate to="/tools" replace />} />
         </Route>
 
         {/* Admin/Backend/Developer Area (with AdminLayout - Sidebar layout) */}

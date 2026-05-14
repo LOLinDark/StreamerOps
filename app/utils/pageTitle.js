@@ -15,6 +15,7 @@ const TITLE_OVERRIDES = {
   '/settings/hotas': 'HOTAS',
   '/settings/theme': 'Theme',
   '/about': 'About',
+  '/tools': 'Tools',
   '/screenshots': 'Screenshots',
   '/admin/chat/claude': 'Claude Chat',
   '/admin/chat/gemini': 'Gemini Chat',

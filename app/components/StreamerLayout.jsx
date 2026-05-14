@@ -140,6 +140,13 @@ export default function StreamerLayout() {
         <Title order={5} mb="md" c="dimmed" style={{ letterSpacing: '0.15em', textTransform: 'uppercase' }}>Streamer</Title>
         <Stack gap="xs">
           <NavLink label="Overview" active={path === '/streamer'} component={Link} to="/streamer" />
+          <NavLink
+            label="Stream Status"
+            active={isActive('/stream-status')}
+            component={Link}
+            to="/stream-status"
+            description="Pre-stream audio/video check"
+          />
 
           <Divider my="xs" label="Playlist" labelPosition="center" />
           <NavLink

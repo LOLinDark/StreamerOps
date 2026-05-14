@@ -57,7 +57,8 @@ export default function AppHeader({ pageTitle }) {
           <Menu.Dropdown>
             <Menu.Item onClick={() => navigate('/')}>Control Deck</Menu.Item>
             <Menu.Item onClick={() => navigate('/scene-editor')}>Scene Editor</Menu.Item>
-            <Menu.Item onClick={() => navigate('/location-guide')}>Status View</Menu.Item>
+            <Menu.Item onClick={() => navigate('/stream-status')}>Stream Status</Menu.Item>
+            <Menu.Item onClick={() => navigate('/tools')}>Tools</Menu.Item>
             <Menu.Divider />
             <Menu.Item onClick={() => navigate('/settings')}>Settings</Menu.Item>
             <Menu.Divider />

@@ -136,6 +136,15 @@ export const routeConfig = {
     },
   ],
 
+  tools: [
+    {
+      label: '/tools',
+      path: '/tools',
+      category: 'Utilities',
+      color: 'cyan',
+    },
+  ],
+
   testPages: [
     {
       label: '[DEV09] /developer/testing',
@@ -283,6 +292,7 @@ export const getAllRoutes = () => {
     ...routeConfig.main,
     ...routeConfig.themeLab,
     ...routeConfig.admin,
+    ...routeConfig.tools,
     ...routeConfig.testPages,
     ...routeConfig.streamer,
     ...routeConfig.overlays,

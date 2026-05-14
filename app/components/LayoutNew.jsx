@@ -146,6 +146,9 @@ export default function Layout() {
                 <Menu.Item component={Link} to="/admin/analytics">Analytics</Menu.Item>
                 <Menu.Item component={Link} to="/admin/rate-limits">Rate Limits</Menu.Item>
                 <Menu.Item component={Link} to="/admin/history">Field History</Menu.Item>
+                <Menu.Divider />
+                <Menu.Label>Utilities</Menu.Label>
+                <Menu.Item component={Link} to="/tools">OBS/Streamlabs Tools</Menu.Item>
               </Menu.Dropdown>
             </Menu>
             <Button variant={path.startsWith('/developer') ? 'filled' : 'subtle'} component={Link} to="/developer">Dev</Button>
@@ -187,6 +190,7 @@ export default function Layout() {
           <NavLink label="Analytics" active={isActive('/admin/analytics')} component={Link} to="/admin/analytics" />
           <NavLink label="Rate Limits" active={isActive('/admin/rate-limits')} component={Link} to="/admin/rate-limits" />
           <NavLink label="Field History" active={isActive('/admin/history')} component={Link} to="/admin/history" />
+          <NavLink label="OBS/Streamlabs Tools" active={isActive('/tools')} component={Link} to="/tools" />
           <Divider my="xs" label="Settings" labelPosition="center" />
           <NavLink label="Settings" active={path === '/settings'} component={Link} to="/settings" />
           <NavLink label="Theme" active={isActive('/settings/theme')} component={Link} to="/settings/theme" />

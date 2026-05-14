@@ -10,9 +10,6 @@ const OFFICIAL_BOOKMARKS = [
   { label: 'Twitch Dashboard', url: 'https://dashboard.twitch.tv/', icon: '🟣' },
   { label: 'Twitch Streamer Camp', url: 'https://www.twitch.tv/creatorcamp/en/', icon: '🎓' },
   { label: 'YouTube Studio', url: 'https://studio.youtube.com/', icon: '▶️' },
-  { label: 'Star Citizen Hub', url: 'https://robertsspaceindustries.com/community-hub', icon: '🌌' },
-  { label: 'Spectrum', url: 'https://robertsspaceindustries.com/spectrum/', icon: '💬' },
-  { label: 'RSI Progress Tracker', url: 'https://robertsspaceindustries.com/roadmap/progress-tracker/teams', icon: '📊' },
 ];
 
 function readSeenTimestamp() {
