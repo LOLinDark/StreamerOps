@@ -36,7 +36,7 @@ const ContentMarker = ({ status, type }) => {
 export default function WelcomeOnline() {
   const navigate = useNavigate();
 
-  const referralCode = 'OMNICORE2026'; // TODO: Replace with your actual code
+  const referralCode = import.meta.env.VITE_REFERRAL_CODE || '';
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', background: 'var(--oc-space-deep)', overflow: 'hidden' }}>
