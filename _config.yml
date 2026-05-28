@@ -1,6 +1,6 @@
-title: "OmniCore"
-description: "Citizen Operations & Intelligence Network — Star Citizen companion hub"
-baseurl: "/StarCitizen-OmniCore"
+title: "StreamerOps"
+description: "Browser-based OBS overlay control and stream management PWA — by LOLinDark"
+baseurl: "/StreamerOps"
 url: "https://lolindark.github.io"
 
 markdown: kramdown
@@ -10,14 +10,12 @@ kramdown:
 navigation:
   - title: Home
     url: /
-  - title: User Guide
-    url: /user-guide
   - title: Developer Guide
     url: /developer-guide/
   - title: About
     url: /about
-  - title: Support
-    url: /support
+  - title: GitHub
+    url: https://github.com/LOLinDark/StreamerOps
 
 exclude:
   - node_modules
@@ -32,6 +30,5 @@ exclude:
   - .env
   - .env.example
   - tmp-starmap.json
-  - DOCUMENTATION-STRUCTURE.md
   - app/
   - .github/

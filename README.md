@@ -1,6 +1,9 @@
 # StreamerOps
 
-StreamerOps is a web-based prototype built as a Progressive Web App (PWA) to explore how desktop-grade streaming workflows can be bridged through the browser. Very new, basic, conceptual. 
+![Status](https://img.shields.io/badge/status-prototype-orange)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+
+StreamerOps is a browser-based OBS overlay control and stream management tool, built as a Progressive Web App (PWA) to bridge desktop-grade streaming workflows through the browser. Very new, basic, conceptual. 
 
 The project combines live overlay control with agentic development tooling so creators can stand up overlays fast, iterate quickly, and apply focused changes in short time windows during production.
 
@@ -130,6 +133,17 @@ Use environment variables for sensitive configuration and follow least-privilege
 This project is licensed under the GNU General Public License v3.0 (GPL-3.0).
 
 See the [LICENSE](LICENSE) file for full terms.
+
+## Support
+
+If StreamerOps is useful to you, consider supporting development:
+
+- ☕ [Buy Me a Coffee](https://buymeacoffee.com/ryanbayne)
+- 💜 [GitHub Sponsors](https://github.com/sponsors/LOLinDark)
+
+---
+
+Built by [LOLinDark](https://github.com/LOLinDark)
 
 ## Contact And Project Direction
 

@@ -5,21 +5,21 @@ url: /
 ---
 
 <div class="hero-section">
-  <h1>OmniCore</h1>
-  <p class="tagline">Citizen Operations & Intelligence Network</p>
-  <p class="subtitle">A Star Citizen companion hub — ship intelligence, peripheral configuration, and in-game tooling in one MobiGlass-inspired interface.</p>
+  <h1>StreamerOps</h1>
+  <p class="tagline">Browser-Based Stream Control</p>
+  <p class="subtitle">A PWA for live overlay management, OBS integration, and real-time stream production — all from your browser.</p>
 </div>
 
 <div class="card-grid">
   <div class="card hero-card sc">
-    <div class="card-icon">🚀</div>
-    <h3>Star Citizen</h3>
-    <p>The best damn space sim ever — explore, trade, fight, and build across a persistent universe.</p>
+    <div class="card-icon">🎬</div>
+    <h3>Live Overlays</h3>
+    <p>Design, deploy, and control stream overlays in real-time using React components.</p>
   </div>
   <div class="card hero-card sq42">
-    <div class="card-icon">⚔️</div>
-    <h3>Squadron 42</h3>
-    <p>A cinematic single-player campaign set in the Star Citizen universe.</p>
+    <div class="card-icon">🎮</div>
+    <h3>OBS Integration</h3>
+    <p>Connect to OBS via WebSocket for scene switching, source control, and stream management.</p>
   </div>
 </div>
 
@@ -27,22 +27,19 @@ url: /
 
 <div class="card-grid">
   <div class="card">
-    <div class="card-icon">🛸</div>
-    <h3>GT05 Ship Database</h3>
-    <p>Full ship roster with filters, sortable columns, expandable specs, and dossier modal with official video.</p>
-    <a class="card-link" href="{{ '/user-guide/' | relative_url }}">Learn more →</a>
-  </div>
-  <div class="card">
-    <div class="card-icon">🎮</div>
-    <h3>HC05 Technology Config</h3>
-    <p>Load your Star Citizen XML profile, visualize HOTAS/KBM bindings, reassign inputs, and export back to XML.</p>
-    <a class="card-link" href="{{ '/user-guide/' | relative_url }}">Learn more →</a>
-  </div>
-  <div class="card">
     <div class="card-icon">📡</div>
-    <h3>VerseMail</h3>
-    <p>Submit contact transmissions or bug reports directly from the app.</p>
-    <a class="card-link" href="{{ '/support/' | relative_url }}">Get in touch →</a>
+    <h3>Overlay Control Surface</h3>
+    <p>Browser-first control panel for managing live overlays without desktop tooling overhead.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">⚡</div>
+    <h3>Rapid Iteration</h3>
+    <p>Agent-assisted workflows for fast overlay setup and adjustment during production.</p>
+  </div>
+  <div class="card">
+    <div class="card-icon">🎥</div>
+    <h3>FFmpeg Integration</h3>
+    <p>In-browser media processing via FFmpeg WASM for clip handling and stream utilities.</p>
   </div>
   <div class="card">
     <div class="card-icon">📖</div>
@@ -54,6 +51,8 @@ url: /
 
 ---
 
-## Disclaimer
+## Current Status
 
-OmniCore is a fan-made project. Star Citizen® is a registered trademark of Cloud Imperium Rights LLC.
+StreamerOps is an **active prototype** exploring how desktop-grade streaming workflows can be bridged through the browser. Expect rapid iteration and evolving interfaces.
+
+Built by [LOLinDark](https://github.com/LOLinDark) — [View on GitHub](https://github.com/LOLinDark/StreamerOps)
